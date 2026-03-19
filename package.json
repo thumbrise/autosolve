@@ -1,0 +1,17 @@
+{
+  "name": "autosolve",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "devDependencies": {
+    "@commitlint/cli": "^20.5.0",
+    "@commitlint/config-conventional": "^20.5.0",
+    "conventional-changelog-conventionalcommits": "^9.3.0",
+    "semantic-release": "^24.2.9"
+  }
+}

@@ -1,0 +1,11 @@
+- {{subject}}{{~#if hash}} ([{{shortHash}}]({{@root.host}}/{{@root.owner}}/{{@root.repository}}/commit/{{hash}})){{/if}}
+
+{{~#if references~}}
+    closes
+    {{~#each references}} {{#if @root.linkReferences~}}
+        [{{this.prefix}}{{this.issue}}]({{@root.host}}/{{@root.owner}}/{{@root.repository}}/issues/{{this.issue}})
+    {{~else}}
+        {{~this.prefix}}{{this.issue}}
+    {{~/if}}{{/each}}
+{{~/if}}
+

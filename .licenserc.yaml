@@ -1,0 +1,39 @@
+header:
+  license:
+    spdx-id: Apache-2.0
+    copyright-owner: thumbrise
+    copyright-year: '2026'
+    software-name: autosolve
+
+  paths:
+    - '**/*.go'
+    - '**/*.js'
+    - '**/*.ts'
+    - '**/*.sh'
+
+  paths-ignore:
+    - 'dist'
+    - 'licenses'
+    - '**/*.md'
+    - '**/*.yaml'
+    - '**/*.yml'
+    - '**/testdata/**'
+    - '**/go.mod'
+    - '**/go.sum'
+    - '**/package-lock.json'
+    - '**/node_modules/**'
+    - 'LICENSE'
+    - 'NOTICE'
+    - '.gitignore'
+    - '.dockerignore'
+
+  comment: on-failure
+  license-location-threshold: 80
+
+dependency:
+  files:
+    - go.mod
+
+  threshold: 75
+  require_fsf_free: false
+  require_osi_approved: false

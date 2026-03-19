@@ -1,0 +1,21 @@
+#schema: https://taskfile.dev/schema.json
+version: '3.17'
+
+tasks:
+  lint:
+    desc: Run lint
+    cmds:
+      - golangci-lint run
+      - go tool license-eye dependency check
+      - go tool license-eye header check
+
+  test:
+    desc: Run tests
+    cmds:
+      - go test ./... -v -tags=test
+      - go test ./... -v -tags=test -run=NONE -bench=. -benchmem
+
+  license:
+    desc: Add license headers to files
+    cmds:
+      - go tool license-eye header fix
