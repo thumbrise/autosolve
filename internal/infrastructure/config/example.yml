@@ -1,3 +1,4 @@
+debug: true
 myParams:
   paramStr: "param"
   paramInt: 5

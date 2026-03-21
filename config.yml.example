@@ -1,3 +1,4 @@
+debug: true
 github:
   token: 1234
   owner: thumbrise

@@ -26,10 +26,11 @@ type Container struct {
 	// Commands register themselves on the Kernel via side-effect in their constructors.
 	Commands     []*cobra.Command
 	ConfigLoader *config.Loader
+	ConfigReader *config.Reader
 	LoggerLoader *logger.Loader
 	Kernel       *Kernel
 }
 
-func NewContainer(commands []*cobra.Command, configLoader *config.Loader, kernel *Kernel, loggerLoader *logger.Loader) *Container {
-	return &Container{Commands: commands, ConfigLoader: configLoader, Kernel: kernel, LoggerLoader: loggerLoader}
+func NewContainer(commands []*cobra.Command, configLoader *config.Loader, configReader *config.Reader, kernel *Kernel, loggerLoader *logger.Loader) *Container {
+	return &Container{Commands: commands, ConfigLoader: configLoader, ConfigReader: configReader, Kernel: kernel, LoggerLoader: loggerLoader}
 }
