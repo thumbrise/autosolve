@@ -31,6 +31,6 @@ func InitializeContainer(ctx context.Context) (*bootstrap.Container, error) {
 	v := cmd.Commands(schedule)
 	loader := config.NewLoader(slogLogger, viper)
 	loggerLoader := logger.NewLoader()
-	container := bootstrap.NewContainer(v, loader, kernel, loggerLoader)
+	container := bootstrap.NewContainer(v, loader, reader, kernel, loggerLoader)
 	return container, nil
 }
