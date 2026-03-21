@@ -12,10 +12,22 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package logger
+package bootstrap
 
-import "log/slog"
+import (
+	"github.com/spf13/cobra"
 
-func NewSlogLogger() *slog.Logger {
-	return slog.Default()
+	"github.com/thumbrise/autosolve/internal/infrastructure/config"
+	"github.com/thumbrise/autosolve/internal/infrastructure/logger"
+)
+
+type Container struct {
+	Commands     []*cobra.Command
+	ConfigLoader *config.Loader
+	LoggerLoader *logger.Loader
+	Kernel       *Kernel
+}
+
+func NewContainer(commands []*cobra.Command, configLoader *config.Loader, kernel *Kernel, loggerLoader *logger.Loader) *Container {
+	return &Container{Commands: commands, ConfigLoader: configLoader, Kernel: kernel, LoggerLoader: loggerLoader}
 }

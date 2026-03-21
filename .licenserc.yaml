@@ -26,6 +26,7 @@ header:
     - 'NOTICE'
     - '.gitignore'
     - '.dockerignore'
+    - '**/*_gen.**'
 
   comment: on-failure
   license-location-threshold: 80

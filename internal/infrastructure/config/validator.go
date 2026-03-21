@@ -12,10 +12,16 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package logger
+package config
 
-import "log/slog"
+import "github.com/go-playground/validator/v10"
 
-func NewSlogLogger() *slog.Logger {
-	return slog.Default()
+type Validator struct {
+	*validator.Validate
+}
+
+func NewValidator() *Validator {
+	return &Validator{
+		Validate: validator.New(validator.WithRequiredStructEnabled()),
+	}
 }

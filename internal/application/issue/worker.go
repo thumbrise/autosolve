@@ -26,20 +26,22 @@ import (
 	"github.com/thumbrise/autosolve/internal/infrastructure/config"
 )
 
-type Worker struct{}
-
-func NewWorker() *Worker {
-	return &Worker{}
+type Worker struct {
+	cfgReader *config.Reader
 }
 
-func (p *Worker) Run(ctx context.Context) error {
+func NewWorker(cfgReader *config.Reader) *Worker {
+	return &Worker{cfgReader: cfgReader}
+}
+
+func (w *Worker) Run(ctx context.Context) error {
 	logger := slog.With(slog.String("component", "issue-parser-worker"))
 
 	logger.DebugContext(ctx, "Starting issue parser worker")
 
 	var cfg Config
 
-	err := config.Read(ctx, &cfg, "github")
+	err := w.cfgReader.Read(ctx, &cfg, "github")
 	if err != nil {
 		return err
 	}

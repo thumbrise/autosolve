@@ -12,10 +12,26 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package logger
+//go:build wireinject
 
-import "log/slog"
+package wire
 
-func NewSlogLogger() *slog.Logger {
-	return slog.Default()
+import (
+	"context"
+
+	"github.com/google/wire"
+
+	"github.com/thumbrise/autosolve/cmd"
+	"github.com/thumbrise/autosolve/internal"
+	"github.com/thumbrise/autosolve/internal/bootstrap"
+)
+
+func InitializeContainer(ctx context.Context) (*bootstrap.Container, error) {
+	wire.Build(
+		bootstrap.NewContainer,
+		internal.Bindings,
+		cmd.Bindings,
+	)
+
+	return &bootstrap.Container{}, nil
 }

@@ -12,10 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package logger
+package contracts
 
-import "log/slog"
+import "github.com/spf13/cobra"
 
-func NewSlogLogger() *slog.Logger {
-	return slog.Default()
+type RootCMD interface {
+	AddCommand(cmd *cobra.Command)
 }

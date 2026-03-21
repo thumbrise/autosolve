@@ -15,32 +15,21 @@
 package config
 
 import (
+	"log/slog"
 	"strings"
 
 	"github.com/spf13/viper"
 )
 
-type LoadOptions struct {
-	EnvPrefix      string
-	ConfigFilePath string
-	ConfigFileName string
-	ConfigFileType string
-}
+func NewViper(logger *slog.Logger) *viper.Viper {
+	vp := viper.NewWithOptions(
+		viper.WithLogger(logger),
+		viper.ExperimentalBindStruct(),
+		viper.EnvKeyReplacer(strings.NewReplacer(".", "_")),
+	)
 
-func Load(opts LoadOptions) error {
-	viper.SetTypeByDefaultValue(true)
-	viper.SetOptions(viper.ExperimentalBindStruct())
-	viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
-	viper.SetEnvPrefix(opts.EnvPrefix)
-	viper.AutomaticEnv()
+	vp.SetTypeByDefaultValue(true)
+	vp.AutomaticEnv()
 
-	if opts.ConfigFilePath != "" || opts.ConfigFileType != "" || opts.ConfigFileName != "" {
-		viper.AddConfigPath(opts.ConfigFilePath)
-		viper.SetConfigName(opts.ConfigFileName)
-		viper.SetConfigType(opts.ConfigFileType)
-
-		return viper.ReadInConfig()
-	}
-
-	return nil
+	return vp
 }

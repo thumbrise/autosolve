@@ -12,10 +12,15 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package logger
+package config
 
-import "log/slog"
+type LoadOptionsFile struct {
+	Path string
+	Name string
+	Type string
+}
 
-func NewSlogLogger() *slog.Logger {
-	return slog.Default()
+type LoadOptions struct {
+	EnvPrefix string
+	File      *LoadOptionsFile
 }

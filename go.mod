@@ -35,7 +35,9 @@ require (
 	github.com/google/go-github/v33 v33.0.0 // indirect
 	github.com/google/go-querystring v1.2.0 // indirect
 	github.com/google/licensecheck v0.3.1 // indirect
+	github.com/google/subcommands v1.2.0 // indirect
 	github.com/google/uuid v1.6.0 // indirect
+	github.com/google/wire v0.7.0 // indirect
 	github.com/huandu/xstrings v1.4.0 // indirect
 	github.com/imdario/mergo v0.3.16 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
@@ -46,6 +48,7 @@ require (
 	github.com/mitchellh/reflectwalk v1.0.2 // indirect
 	github.com/pelletier/go-toml/v2 v2.2.4 // indirect
 	github.com/pjbgf/sha1cd v0.3.0 // indirect
+	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/rogpeppe/go-internal v1.14.1 // indirect
 	github.com/sagikazarmark/locafero v0.11.0 // indirect
 	github.com/sergi/go-diff v1.3.2-0.20230802210424-5b0b94c5c0d3 // indirect
@@ -70,4 +73,7 @@ require (
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
 
-tool github.com/apache/skywalking-eyes/cmd/license-eye
+tool (
+	github.com/apache/skywalking-eyes/cmd/license-eye
+	github.com/google/wire/cmd/wire
+)

@@ -17,11 +17,14 @@ package config_test
 import (
 	"context"
 	"fmt"
+	"log/slog"
+
+	"github.com/spf13/viper"
 
 	"github.com/thumbrise/autosolve/internal/infrastructure/config"
 )
 
-func ExampleRead() {
+func ExampleReader_Read() {
 	type Params struct {
 		ParamStr string `validate:"required"`
 		ParamInt int
@@ -33,10 +36,16 @@ func ExampleRead() {
 		MyParams Params
 	}
 
-	err := config.Load(config.LoadOptions{
-		ConfigFilePath: ".",
-		ConfigFileName: "example",
-		ConfigFileType: "yml",
+	logger := slog.Default()
+	vp := viper.New()
+	loader := config.NewLoader(logger, vp)
+
+	err := loader.Load(config.LoadOptions{
+		File: &config.LoadOptionsFile{
+			Path: ".",
+			Name: "example",
+			Type: "yml",
+		},
 	})
 	if err != nil {
 		fmt.Println(err)
@@ -44,7 +53,7 @@ func ExampleRead() {
 
 	var cfg Config
 
-	err = config.Read(context.Background(), &cfg, "")
+	err = loader.GetReader().Read(context.Background(), &cfg, "")
 	if err != nil {
 		fmt.Println(err)
 	}
