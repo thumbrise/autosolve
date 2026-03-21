@@ -81,7 +81,7 @@ func (r *Runner) Wait(ctx context.Context) error {
 		<-ctxGrp.Done()
 		slog.InfoContext(ctx, "runner context cancelled, shutting down processes")
 
-		ctxShutdown, shutdownCancel := context.WithTimeout(ctx, 30*time.Second)
+		ctxShutdown, shutdownCancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
 		defer shutdownCancel()
 
 		r.shutdownProcesses(ctxShutdown, r.processes)
