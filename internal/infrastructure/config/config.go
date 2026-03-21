@@ -19,9 +19,9 @@ import (
 	"fmt"
 	"log/slog"
 
+	"github.com/go-playground/validator/v10"
 	"github.com/spf13/viper"
 )
-import "github.com/go-playground/validator/v10"
 
 var validate = validator.New(validator.WithRequiredStructEnabled())
 
