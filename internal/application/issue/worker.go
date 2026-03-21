@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"github.com/google/go-github/v84/github"
+
 	"github.com/thumbrise/autosolve/internal/infrastructure/config"
 )
 
