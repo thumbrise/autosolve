@@ -49,7 +49,10 @@ func main() {
 		Debug bool
 	}
 
-	_ = c.ConfigReader.Read(ctx, &appCfg, "")
+	if err = c.ConfigReader.Read(ctx, &appCfg, ""); err != nil {
+		log.Printf("WARN: cannot read app config, fallback to defaults: %s", err)
+	}
+
 	c.LoggerLoader.Load(ctx, appCfg.Debug)
 
 	err = c.Kernel.Execute(ctx)
