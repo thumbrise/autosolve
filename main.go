@@ -45,6 +45,13 @@ func main() {
 		log.Fatalf("cannot load config: %s", err)
 	}
 
+	var appCfg struct {
+		Debug bool
+	}
+
+	_ = c.ConfigReader.Read(ctx, &appCfg, "")
+	c.LoggerLoader.Load(ctx, appCfg.Debug)
+
 	err = c.Kernel.Execute(ctx)
 	if err != nil {
 		os.Exit(1)

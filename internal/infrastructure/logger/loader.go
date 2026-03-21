@@ -17,58 +17,23 @@ package logger
 import (
 	"context"
 	"log/slog"
-	"os"
-	"strings"
-	"unicode/utf8"
-
-	"github.com/m-mizutani/masq"
 )
 
-// maskPercentHead masks the first `percent` percent of the string's runes
-// with the given symbol, leaving the rest visible. It always returns true
-// for string inputs and false otherwise.
-func maskPercentHead(symbol rune, percent int) masq.Redactor {
-	return masq.RedactString(func(s string) string {
-		if percent <= 0 {
-			return s
-		}
-
-		if percent >= 100 {
-			return strings.Repeat(string(symbol), utf8.RuneCountInString(s))
-		}
-
-		runes := []rune(s)
-		n := len(runes)
-
-		maskCount := n * percent / 100
-		if maskCount > n {
-			maskCount = n
-		}
-
-		return strings.Repeat(string(symbol), maskCount) + string(runes[maskCount:])
-	})
+type Loader struct {
+	level *slog.LevelVar
 }
 
-type Loader struct{}
-
-func NewLoader() *Loader {
-	return &Loader{}
+func NewLoader(level *slog.LevelVar) *Loader {
+	return &Loader{level: level}
 }
 
+// Load reconfigures the logger level atomically.
+// Safe to call at any time — all existing *slog.Logger references
+// will immediately reflect the new level.
 func (c *Loader) Load(ctx context.Context, debug bool) {
-	opts := &slog.HandlerOptions{
-		AddSource:   false,
-		Level:       slog.LevelInfo,
-		ReplaceAttr: masq.New(masq.WithTag("secret", maskPercentHead('*', 75))),
-	}
-
 	if debug {
-		opts.Level = slog.LevelDebug
-		opts.AddSource = true
+		c.level.Set(slog.LevelDebug)
 	}
 
-	l := slog.New(slog.NewJSONHandler(os.Stdout, opts))
-	slog.SetDefault(l)
-
-	l.DebugContext(ctx, "logger loaded", slog.String("level", opts.Level.Level().String()))
+	slog.DebugContext(ctx, "logger loaded", slog.Bool("debug", debug))
 }
