@@ -122,26 +122,11 @@ linters:
           - varnamelen
         text: variable name 'ok' is too short for the scope of its usage
       - linters:
-          - unused
-        text: type `validationError` is unused
-      - linters:
           - staticcheck
         text: 'ST1000: at least one file in a package should have a package comment'
       - linters:
-          - ireturn
-        path: .*handlers.*
-      - linters:
-          - ireturn
-          - nonamedreturns
-        path: .*middlewares.*
-      - linters:
-          - ireturn
-          - nonamedreturns
-        path: .*interceptors.*
-      - linters:
           - gochecknoinits
         path: .*cmd.*
-
     paths:
       - third_party$
       - builtin$
