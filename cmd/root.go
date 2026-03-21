@@ -12,37 +12,20 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package main
+package cmd
 
 import (
-	"context"
-	"log"
-	"os"
-
-	"github.com/thumbrise/autosolve/cmd"
-	"github.com/thumbrise/autosolve/internal/infrastructure/config"
-	"github.com/thumbrise/autosolve/internal/infrastructure/logger"
+	"github.com/spf13/cobra"
+	"github.com/thumbrise/autosolve/internal/application"
 )
 
-const envPrefix = "AUTOSOLVE"
+var RootCMD = &cobra.Command{
+	Use:          "autosolve",
+	Short:        "CLI autosolve",
+	SilenceUsage: true,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		scheduler := application.NewScheduler()
 
-func main() {
-	ctx := context.Background()
-
-	logger.Configure()
-
-	err := config.Load(config.LoadOptions{
-		EnvPrefix:      envPrefix,
-		ConfigFilePath: ".",
-		ConfigFileName: "config",
-		ConfigFileType: "yml",
-	})
-	if err != nil {
-		log.Fatalf("cant load config: %s", err)
-	}
-
-	err = cmd.RootCMD.ExecuteContext(ctx)
-	if err != nil {
-		os.Exit(1)
-	}
+		return scheduler.Run(cmd.Context())
+	},
 }
