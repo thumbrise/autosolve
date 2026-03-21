@@ -62,6 +62,12 @@ func (r *Runner) Add(process *Process) {
 func (r *Runner) Wait(ctx context.Context) error {
 	slog.InfoContext(ctx, "runner starting")
 
+	// Save the original context before signal/errgroup overwrite it.
+	// This context carries caller values (e.g. OTel traces) but is not
+	// tied to the signal or errgroup cancellation, so it stays valid
+	// for deriving a shutdown timeout.
+	baseCtx := ctx
+
 	ctx, cancel := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 
@@ -74,10 +80,10 @@ func (r *Runner) Wait(ctx context.Context) error {
 
 	slog.InfoContext(ctx, "runner processes finished, shutting down")
 
-	ctx, shutdownCancel := context.WithTimeout(ctx, 30*time.Second)
+	shutdownCtx, shutdownCancel := context.WithTimeout(baseCtx, 30*time.Second)
 	defer shutdownCancel()
 
-	r.shutdownProcesses(ctx, r.processes)
+	r.shutdownProcesses(shutdownCtx, r.processes)
 
 	if err != nil && !errors.Is(err, context.Canceled) {
 		slog.ErrorContext(ctx, "runner error", slog.Any("error", err))
