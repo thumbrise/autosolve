@@ -22,6 +22,8 @@ import (
 )
 
 type Container struct {
+	// Commands is consumed by Wire to trigger instantiation of all command providers.
+	// Commands register themselves on the Kernel via side-effect in their constructors.
 	Commands     []*cobra.Command
 	ConfigLoader *config.Loader
 	LoggerLoader *logger.Loader

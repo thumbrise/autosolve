@@ -14,8 +14,31 @@
 
 package logger
 
-import "log/slog"
+import (
+	"log/slog"
+	"os"
+
+	"github.com/m-mizutani/masq"
+)
 
 func NewSlogLogger() *slog.Logger {
-	return slog.Default()
+	// Reading debug flag directly from env to avoid circular dependency:
+	// logger must be created before config, but config needs logger.
+	debug := os.Getenv("AUTOSOLVE_DEBUG") == "true"
+
+	opts := &slog.HandlerOptions{
+		AddSource:   false,
+		Level:       slog.LevelInfo,
+		ReplaceAttr: masq.New(masq.WithTag("secret", maskPercentHead('*', 75))),
+	}
+
+	if debug {
+		opts.Level = slog.LevelDebug
+		opts.AddSource = true
+	}
+
+	l := slog.New(slog.NewJSONHandler(os.Stdout, opts))
+	slog.SetDefault(l)
+
+	return l
 }

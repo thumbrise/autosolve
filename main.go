@@ -33,8 +33,6 @@ func main() {
 		log.Fatalf("cannot initialize container: %s", err.Error())
 	}
 
-	c.LoggerLoader.Load(ctx, true)
-
 	err = c.ConfigLoader.Load(config.LoadOptions{
 		EnvPrefix: envPrefix,
 		File: &config.LoadOptionsFile{

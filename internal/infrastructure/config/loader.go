@@ -17,21 +17,20 @@ package config
 import (
 	"log/slog"
 
-	"github.com/go-playground/validator/v10"
 	"github.com/spf13/viper"
 )
 
 type Loader struct {
-	viper     *viper.Viper
-	validator *validator.Validate
-	logger    *slog.Logger
+	viper  *viper.Viper
+	logger *slog.Logger
+	reader *Reader
 }
 
 func NewLoader(logger *slog.Logger, vp *viper.Viper) *Loader {
 	return &Loader{
-		viper:     vp,
-		validator: validator.New(validator.WithRequiredStructEnabled()),
-		logger:    logger,
+		viper:  vp,
+		logger: logger,
+		reader: NewReader(logger, NewValidator(), vp),
 	}
 }
 
@@ -49,6 +48,8 @@ func (l *Loader) Load(opts LoadOptions) error {
 	return nil
 }
 
+// GetReader returns the cached Reader bound to this Loader's viper and logger.
+// Useful for standalone usage without DI (e.g. examples, tests).
 func (l *Loader) GetReader() *Reader {
-	return NewReader(l.logger, NewValidator(), l.viper)
+	return l.reader
 }
