@@ -5,7 +5,6 @@ go 1.25.0
 require (
 	github.com/go-playground/validator/v10 v10.30.1
 	github.com/google/go-github/v84 v84.0.0
-	github.com/iancoleman/strcase v0.3.0
 	github.com/m-mizutani/masq v0.2.1
 	github.com/spf13/cobra v1.6.1
 	github.com/spf13/viper v1.21.0

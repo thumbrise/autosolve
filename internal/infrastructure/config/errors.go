@@ -20,7 +20,6 @@ import (
 	"strings"
 
 	"github.com/go-playground/validator/v10"
-	"github.com/iancoleman/strcase"
 	"github.com/spf13/viper"
 )
 
@@ -75,7 +74,7 @@ func mapFieldErr(fe validator.FieldError, viperKey string) error {
 		varName = viperKey + "." + varName
 	}
 
-	varName = strcase.ToScreamingSnake(varName)
+	varName = strings.ToUpper(strings.ReplaceAll(varName, ".", "_"))
 	if prefix := viper.GetEnvPrefix(); prefix != "" {
 		varName = prefix + "_" + varName
 	}
