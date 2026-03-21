@@ -16,6 +16,7 @@ package cmd
 
 import (
 	"github.com/spf13/cobra"
+
 	"github.com/thumbrise/autosolve/internal/application"
 )
 

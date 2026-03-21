@@ -137,8 +137,15 @@ issues:
 severity:
   default: error
 formatters:
+  settings:
+    gci:
+      sections:
+        - standard
+        - default
+        - prefix(github.com/thumbrise/autosolve)
   enable:
     - gofumpt
+    - gci
   exclusions:
     generated: lax
     paths:
