@@ -62,36 +62,37 @@ func (r *Runner) Add(process *Process) {
 func (r *Runner) Wait(ctx context.Context) error {
 	slog.InfoContext(ctx, "runner starting")
 
-	// Save the original context before signal/errgroup overwrite it.
-	// This context carries caller values (e.g. OTel traces) but is not
-	// tied to the signal or errgroup cancellation, so it stays valid
-	// for deriving a shutdown timeout.
-	baseCtx := ctx
+	ctxNotified, notifiedCancel := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
+	defer notifiedCancel()
 
-	ctx, cancel := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
-	defer cancel()
+	grp, ctxGrp := errgroup.WithContext(ctxNotified)
+	r.startProcesses(ctxGrp, r.processes, grp)
+	// Run shutdown in a standalone goroutine so it is not part of the
+	// errgroup.  This avoids a deadlock: grp.Wait() blocks until all
+	// errgroup goroutines finish, and ctxGrp is cancelled only when
+	// Wait returns (or a goroutine errors).  If the shutdown watcher
+	// were inside the errgroup and every Start returned nil without a
+	// signal, it would block on <-ctxGrp.Done() forever.
+	shutdownDone := make(chan struct{})
 
-	grp, grpCtx := errgroup.WithContext(ctx)
-	r.startProcesses(grpCtx, r.processes, grp)
+	go func() {
+		defer close(shutdownDone)
 
-	// Trigger shutdown as soon as the context is cancelled (signal or
-	// first goroutine error), so processes like http.Server that need
-	// an explicit Shutdown() call can stop and unblock grp.Wait().
-	grp.Go(func() error {
-		<-grpCtx.Done()
-		slog.InfoContext(grpCtx, "runner context cancelled, shutting down processes")
+		<-ctxGrp.Done()
+		slog.InfoContext(ctx, "runner context cancelled, shutting down processes")
 
-		shutdownCtx, shutdownCancel := context.WithTimeout(baseCtx, 30*time.Second)
+		ctxShutdown, shutdownCancel := context.WithTimeout(ctx, 30*time.Second)
 		defer shutdownCancel()
 
-		r.shutdownProcesses(shutdownCtx, r.processes)
+		r.shutdownProcesses(ctxShutdown, r.processes)
+	}()
 
-		return nil
-	})
-
-	slog.InfoContext(grpCtx, "runner waiting for processes")
+	slog.InfoContext(ctx, "runner waiting for processes")
 
 	err := grp.Wait()
+
+	<-shutdownDone
+
 	if err != nil && !errors.Is(err, context.Canceled) {
 		slog.ErrorContext(ctx, "runner error", slog.Any("error", err))
 
