@@ -47,11 +47,15 @@ func maskPercentHead(symbol rune, percent int) masq.Redactor {
 	})
 }
 
+// level is shared between NewSlogLogger and Loader within this package.
+// It allows Loader to change the log level atomically after config is loaded.
+var level = &slog.LevelVar{} // INFO by default
+
 // NewSlogLogger creates a fully configured *slog.Logger with no external dependencies.
-// Level is controlled via *slog.LevelVar and can be changed atomically at any time (e.g. after config is loaded).
+// Level is controlled via package-level LevelVar and can be changed atomically
+// at any time via Loader.Load (e.g. after config is loaded).
 // Secret masking (masq) is always active. Source info is collected but only emitted at debug level.
-func NewSlogLogger() (*slog.Logger, *slog.LevelVar) {
-	level := &slog.LevelVar{} // INFO by default
+func NewSlogLogger() *slog.Logger {
 	masqReplacer := masq.New(masq.WithTag("secret", maskPercentHead('*', 75)))
 
 	opts := &slog.HandlerOptions{
@@ -70,5 +74,5 @@ func NewSlogLogger() (*slog.Logger, *slog.LevelVar) {
 	l := slog.New(slog.NewJSONHandler(os.Stdout, opts))
 	slog.SetDefault(l)
 
-	return l, level
+	return l
 }

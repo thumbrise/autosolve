@@ -19,20 +19,18 @@ import (
 	"log/slog"
 )
 
-type Loader struct {
-	level *slog.LevelVar
-}
+type Loader struct{}
 
-func NewLoader(level *slog.LevelVar) *Loader {
-	return &Loader{level: level}
+func NewLoader() *Loader {
+	return &Loader{}
 }
 
 // Load reconfigures the logger level atomically.
 // Safe to call at any time — all existing *slog.Logger references
-// will immediately reflect the new level.
+// will immediately reflect the new level via the shared package-level LevelVar.
 func (c *Loader) Load(ctx context.Context, debug bool) {
 	if debug {
-		c.level.Set(slog.LevelDebug)
+		level.Set(slog.LevelDebug)
 	}
 
 	slog.DebugContext(ctx, "logger loaded", slog.Bool("debug", debug))
