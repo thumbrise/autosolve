@@ -12,37 +12,48 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package main
+package config_test
 
 import (
 	"context"
-	"log"
-	"os"
+	"fmt"
 
-	"github.com/thumbrise/autosolve/cmd"
 	"github.com/thumbrise/autosolve/internal/infrastructure/config"
-	"github.com/thumbrise/autosolve/internal/infrastructure/logger"
 )
 
-const envPrefix = "AUTOSOLVE"
+func ExampleRead() {
+	type Params struct {
+		ParamStr string `validate:"required"`
+		ParamInt int
+	}
 
-func main() {
-	ctx := context.Background()
-
-	logger.Configure()
+	type Config struct {
+		// Replaced with mask when use slog
+		MyToken  string `masq:"secret" validate:"required"`
+		MyParams Params
+	}
 
 	err := config.Load(config.LoadOptions{
-		EnvPrefix:      envPrefix,
 		ConfigFilePath: ".",
-		ConfigFileName: "config",
+		ConfigFileName: "example",
 		ConfigFileType: "yml",
 	})
 	if err != nil {
-		log.Fatalf("cant load config: %s", err)
+		fmt.Println(err)
 	}
 
-	err = cmd.RootCMD.ExecuteContext(ctx)
+	var cfg Config
+
+	err = config.Read(context.Background(), &cfg, "")
 	if err != nil {
-		os.Exit(1)
+		fmt.Println(err)
 	}
+
+	fmt.Println(cfg.MyToken)
+	fmt.Println(cfg.MyParams.ParamStr)
+	fmt.Println(cfg.MyParams.ParamInt)
+	// output:
+	// 1234-abcd-qwer-1w2w
+	// param
+	// 5
 }

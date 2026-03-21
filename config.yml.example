@@ -1,0 +1,7 @@
+github:
+  token: 1234
+  owner: thumbrise
+  repo: otelext
+  issues:
+    parseInterval: 5s
+    httpClientTimeout: 5s
