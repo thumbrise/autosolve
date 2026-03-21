@@ -71,20 +71,27 @@ func (r *Runner) Wait(ctx context.Context) error {
 	ctx, cancel := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 
-	grp, ctx := errgroup.WithContext(ctx)
-	r.startProcesses(ctx, r.processes, grp)
+	grp, grpCtx := errgroup.WithContext(ctx)
+	r.startProcesses(grpCtx, r.processes, grp)
 
-	slog.InfoContext(ctx, "runner waiting for processes")
+	// Trigger shutdown as soon as the context is cancelled (signal or
+	// first goroutine error), so processes like http.Server that need
+	// an explicit Shutdown() call can stop and unblock grp.Wait().
+	grp.Go(func() error {
+		<-grpCtx.Done()
+		slog.InfoContext(grpCtx, "runner context cancelled, shutting down processes")
+
+		shutdownCtx, shutdownCancel := context.WithTimeout(baseCtx, 30*time.Second)
+		defer shutdownCancel()
+
+		r.shutdownProcesses(shutdownCtx, r.processes)
+
+		return nil
+	})
+
+	slog.InfoContext(grpCtx, "runner waiting for processes")
 
 	err := grp.Wait()
-
-	slog.InfoContext(ctx, "runner processes finished, shutting down")
-
-	shutdownCtx, shutdownCancel := context.WithTimeout(baseCtx, 30*time.Second)
-	defer shutdownCancel()
-
-	r.shutdownProcesses(shutdownCtx, r.processes)
-
 	if err != nil && !errors.Is(err, context.Canceled) {
 		slog.ErrorContext(ctx, "runner error", slog.Any("error", err))
 
