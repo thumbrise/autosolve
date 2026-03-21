@@ -31,6 +31,8 @@ func NewLoader() *Loader {
 func (c *Loader) Load(ctx context.Context, debug bool) {
 	if debug {
 		level.Set(slog.LevelDebug)
+	} else {
+		level.Set(slog.LevelInfo)
 	}
 
 	slog.DebugContext(ctx, "logger loaded", slog.Bool("debug", debug))
