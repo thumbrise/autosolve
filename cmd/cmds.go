@@ -12,10 +12,22 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package logger
+package cmd
 
-import "log/slog"
+import (
+	"github.com/google/wire"
+	"github.com/spf13/cobra"
 
-func NewSlogLogger() *slog.Logger {
-	return slog.Default()
+	"github.com/thumbrise/autosolve/cmd/cmds"
+)
+
+var Bindings = wire.NewSet(
+	Commands,
+	cmds.NewSchedule,
+)
+
+func Commands(
+	*cmds.Schedule,
+) []*cobra.Command {
+	return []*cobra.Command{}
 }

@@ -19,9 +19,8 @@ import (
 	"log"
 	"os"
 
-	"github.com/thumbrise/autosolve/cmd"
+	"github.com/thumbrise/autosolve/internal/bootstrap/wire"
 	"github.com/thumbrise/autosolve/internal/infrastructure/config"
-	"github.com/thumbrise/autosolve/internal/infrastructure/logger"
 )
 
 const envPrefix = "AUTOSOLVE"
@@ -29,19 +28,26 @@ const envPrefix = "AUTOSOLVE"
 func main() {
 	ctx := context.Background()
 
-	logger.Configure()
-
-	err := config.Load(config.LoadOptions{
-		EnvPrefix:      envPrefix,
-		ConfigFilePath: ".",
-		ConfigFileName: "config",
-		ConfigFileType: "yml",
-	})
+	c, err := wire.InitializeContainer(ctx)
 	if err != nil {
-		log.Fatalf("cant load config: %s", err)
+		log.Fatalf("cannot initialize container: %s", err.Error())
 	}
 
-	err = cmd.RootCMD.ExecuteContext(ctx)
+	c.LoggerLoader.Load(ctx, true)
+
+	err = c.ConfigLoader.Load(config.LoadOptions{
+		EnvPrefix: envPrefix,
+		File: &config.LoadOptionsFile{
+			Path: ".",
+			Name: "config",
+			Type: "yml",
+		},
+	})
+	if err != nil {
+		log.Fatalf("cannot load config: %s", err)
+	}
+
+	err = c.Kernel.Execute(ctx)
 	if err != nil {
 		os.Exit(1)
 	}

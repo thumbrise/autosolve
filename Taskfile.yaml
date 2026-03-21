@@ -2,6 +2,11 @@
 version: '3.17'
 
 tasks:
+  up:
+    desc: Run scheduler
+    cmds:
+      - go run . schedule
+
   lint:
     desc: Run lint
     cmds:
@@ -19,3 +24,8 @@ tasks:
     desc: Add license headers to files
     cmds:
       - go tool license-eye header fix
+
+  generate:
+    desc: Generate all needed
+    cmds:
+      - go tool wire $(go list ./... | grep -v /test)

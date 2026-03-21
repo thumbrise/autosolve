@@ -15,12 +15,7 @@
 package config
 
 import (
-	"errors"
 	"fmt"
-	"strings"
-
-	"github.com/go-playground/validator/v10"
-	"github.com/spf13/viper"
 )
 
 type MissingVariableError struct {
@@ -45,43 +40,4 @@ func NewInvalidVariableError(variable string) *InvalidVariableError {
 
 func (m InvalidVariableError) Error() string {
 	return fmt.Sprintf("variable '%s' fail validation rule", m.variable)
-}
-
-func mapValidationErr(err error, viperKey string) error {
-	var validationErrors validator.ValidationErrors
-
-	ok := errors.As(err, &validationErrors)
-	if !ok {
-		return err
-	}
-
-	var result error
-	for _, fe := range validationErrors {
-		result = errors.Join(result, mapFieldErr(fe, viperKey))
-	}
-
-	return result
-}
-
-func mapFieldErr(fe validator.FieldError, viperKey string) error {
-	if fe.Tag() == "" {
-		return fe
-	}
-
-	_, varName, _ := strings.Cut(fe.StructNamespace(), ".")
-
-	if viperKey != "" {
-		varName = viperKey + "." + varName
-	}
-
-	varName = strings.ToUpper(strings.ReplaceAll(varName, ".", "_"))
-	if prefix := viper.GetEnvPrefix(); prefix != "" {
-		varName = prefix + "_" + varName
-	}
-
-	if fe.Tag() == "required" {
-		return NewMissingVariable(varName)
-	}
-
-	return fmt.Errorf("%w: %w", NewInvalidVariableError(varName), fe)
 }

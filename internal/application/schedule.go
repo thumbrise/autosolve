@@ -21,10 +21,12 @@ import (
 	"github.com/thumbrise/autosolve/pkg/longrun"
 )
 
-type Scheduler struct{}
+type Scheduler struct {
+	issueWorker *issue.Worker
+}
 
-func NewScheduler() *Scheduler {
-	return &Scheduler{}
+func NewScheduler(issueWorker *issue.Worker) *Scheduler {
+	return &Scheduler{issueWorker: issueWorker}
 }
 
 func (s *Scheduler) Run(ctx context.Context) error {
@@ -33,7 +35,7 @@ func (s *Scheduler) Run(ctx context.Context) error {
 	runner.Add(&longrun.Process{
 		Name: "polling issues",
 		Start: func(ctx context.Context) error {
-			return issue.NewWorker().Run(ctx)
+			return s.issueWorker.Run(ctx)
 		},
 		Shutdown: nil,
 	})

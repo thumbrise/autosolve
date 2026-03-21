@@ -12,21 +12,34 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package cmd
+package internal
 
 import (
-	"github.com/spf13/cobra"
+	"github.com/google/wire"
 
 	"github.com/thumbrise/autosolve/internal/application"
+	"github.com/thumbrise/autosolve/internal/application/issue"
+	"github.com/thumbrise/autosolve/internal/bootstrap"
+	"github.com/thumbrise/autosolve/internal/bootstrap/contracts"
+	"github.com/thumbrise/autosolve/internal/infrastructure/config"
+	"github.com/thumbrise/autosolve/internal/infrastructure/logger"
 )
 
-var RootCMD = &cobra.Command{
-	Use:          "autosolve",
-	Short:        "CLI autosolve",
-	SilenceUsage: true,
-	RunE: func(cmd *cobra.Command, args []string) error {
-		scheduler := application.NewScheduler()
+var Bindings = wire.NewSet(
+	bootstrap.NewKernel,
+	wire.Bind(
+		new(contracts.RootCMD),
+		new(*bootstrap.Kernel),
+	),
 
-		return scheduler.Run(cmd.Context())
-	},
-}
+	logger.NewSlogLogger,
+	logger.NewLoader,
+
+	config.NewViper,
+	config.NewValidator,
+	config.NewLoader,
+	config.NewReader,
+
+	application.NewScheduler,
+	issue.NewWorker,
+)
