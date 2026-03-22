@@ -17,6 +17,7 @@ package config_test
 import (
 	"context"
 	"fmt"
+	"log"
 	"log/slog"
 
 	"github.com/spf13/viper"
@@ -24,18 +25,7 @@ import (
 	"github.com/thumbrise/autosolve/internal/infrastructure/config"
 )
 
-func ExampleReader_Read() {
-	type Params struct {
-		ParamStr string `validate:"required"`
-		ParamInt int
-	}
-
-	type Config struct {
-		// Replaced with mask when use slog
-		MyToken  string `masq:"secret" validate:"required"`
-		MyParams Params
-	}
-
+func GetLoader() *config.Loader {
 	logger := slog.Default()
 	vp := viper.New()
 	loader := config.NewLoader(logger, vp)
@@ -51,9 +41,24 @@ func ExampleReader_Read() {
 		fmt.Println(err)
 	}
 
+	return loader
+}
+
+func ExampleReader_Read() {
+	type Params struct {
+		ParamStr string `validate:"required"`
+		ParamInt int
+	}
+
+	type Config struct {
+		// Replaced with mask when use slog
+		MyToken  string `masq:"secret" validate:"required"`
+		MyParams Params
+	}
+
 	var cfg Config
 
-	err = loader.GetReader().Read(context.Background(), &cfg, "")
+	err := GetLoader().GetReader().Read(context.Background(), &cfg, "")
 	if err != nil {
 		fmt.Println(err)
 	}
@@ -65,4 +70,42 @@ func ExampleReader_Read() {
 	// 1234-abcd-qwer-1w2w
 	// param
 	// 5
+}
+
+func ExampleRead() {
+	type MyParams struct {
+		ParamStr string `validate:"required"`
+		ParamInt int
+	}
+
+	ctx := context.Background()
+	reader := GetLoader().GetReader()
+
+	cfg, err := config.Read[MyParams](ctx, reader)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	fmt.Println(cfg.ParamStr)
+	fmt.Println(cfg.ParamInt)
+	// output:
+	// param
+	// 5
+}
+
+func ExampleRead_rootPrimitive() {
+	type SomeRootStringParam string
+
+	ctx := context.Background()
+	reader := GetLoader().GetReader()
+
+	vp, err := config.Read[SomeRootStringParam](ctx, reader)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	v := *vp
+	fmt.Println(v)
+	// output:
+	// i'm root param
 }

@@ -15,6 +15,7 @@
 package config
 
 import (
+	"errors"
 	"fmt"
 )
 
@@ -41,3 +42,9 @@ func NewInvalidVariableError(variable string) *InvalidVariableError {
 func (m InvalidVariableError) Error() string {
 	return fmt.Sprintf("variable '%s' fail validation rule", m.variable)
 }
+
+var (
+	ErrRead      = errors.New("failed to read config")
+	ErrValidate  = errors.New("failed to validate config")
+	ErrUnmarshal = errors.New("failed to unmarshal config")
+)
