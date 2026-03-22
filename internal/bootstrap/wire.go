@@ -12,16 +12,33 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package issue
+//go:build wireinject
 
-import "time"
+package bootstrap
 
-type Config struct {
-	Token  string `masq:"secret"       validate:"required"`
-	Owner  string `validate:"required"`
-	Repo   string `validate:"required"`
-	Issues struct {
-		ParseInterval     time.Duration `validate:"required"`
-		HttpClientTimeout time.Duration `validate:"required"`
-	}
+import (
+	"context"
+	"log/slog"
+
+	"github.com/google/wire"
+
+	"github.com/thumbrise/autosolve/cmd"
+	"github.com/thumbrise/autosolve/internal"
+	"github.com/thumbrise/autosolve/internal/config"
+	configinfra "github.com/thumbrise/autosolve/internal/infrastructure/config"
+)
+
+func InitializeBootstrapper(
+	ctx context.Context,
+	cfgReader *configinfra.Reader,
+	logger *slog.Logger,
+	cfgApp *config.App,
+) (*Bootstrapper, error) {
+	wire.Build(
+		NewBootstrapper,
+		internal.Bindings,
+		cmd.Bindings,
+	)
+
+	return &Bootstrapper{}, nil
 }

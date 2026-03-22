@@ -1,4 +1,7 @@
-debug: true
+app:
+  debug: true
+database:
+  sqlitePath: runtime/database/sqlite.db
 github:
   token: 1234
   owner: thumbrise

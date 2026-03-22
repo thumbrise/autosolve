@@ -19,27 +19,37 @@ import (
 
 	"github.com/thumbrise/autosolve/internal/application"
 	"github.com/thumbrise/autosolve/internal/application/issue"
-	"github.com/thumbrise/autosolve/internal/bootstrap"
 	"github.com/thumbrise/autosolve/internal/bootstrap/contracts"
-	"github.com/thumbrise/autosolve/internal/infrastructure/config"
-	"github.com/thumbrise/autosolve/internal/infrastructure/logger"
+	"github.com/thumbrise/autosolve/internal/bootstrap/kernel"
+	"github.com/thumbrise/autosolve/internal/config"
+	"github.com/thumbrise/autosolve/internal/infrastructure/dal"
+	"github.com/thumbrise/autosolve/internal/infrastructure/dal/repositories"
+	"github.com/thumbrise/autosolve/internal/infrastructure/database"
+	"github.com/thumbrise/autosolve/internal/infrastructure/github"
 )
 
 var Bindings = wire.NewSet(
-	bootstrap.NewKernel,
+	kernel.NewKernel,
 	wire.Bind(
 		new(contracts.RootCMD),
-		new(*bootstrap.Kernel),
+		new(*kernel.Kernel),
 	),
 
-	logger.NewSlogLogger,
-	logger.NewLoader,
+	config.NewGithub,
+	config.NewDatabase,
 
-	config.NewViper,
-	config.NewValidator,
-	config.NewLoader,
-	config.NewReader,
+	database.NewGormDB,
+	wire.NewSet(
+		database.NewMigrator,
+		wire.Value(dal.Models),
+	),
+
+	github.NewGithubClient,
 
 	application.NewScheduler,
+
 	issue.NewWorker,
+	issue.NewParser,
+
+	repositories.NewIssueRepository,
 )

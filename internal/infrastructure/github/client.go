@@ -12,43 +12,22 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package main
+package github
 
 import (
 	"context"
-	"log"
-	"os"
+	"net/http"
 
-	"github.com/thumbrise/autosolve/internal/bootstrap"
+	"github.com/google/go-github/v84/github"
+
+	"github.com/thumbrise/autosolve/internal/config"
 )
 
-func main() {
-	ctx := context.Background()
-
-	eb := bootstrap.NewEarlyBootstrapper()
-
-	err := eb.Bootstrap(ctx)
-	if err != nil {
-		log.Fatalf("failed to start early-bootstrapper: %v", err)
+func NewGithubClient(ctx context.Context, cfg *config.Github) *github.Client {
+	httpClient := &http.Client{
+		Transport: http.DefaultTransport,
+		Timeout:   cfg.Issues.HttpClientTimeout,
 	}
 
-	b, err := bootstrap.InitializeBootstrapper(
-		ctx,
-		eb.ConfigReader,
-		eb.Logger,
-		eb.ConfigApp,
-	)
-	if err != nil {
-		log.Fatalf("failed initialize bootstrapper: %s", err)
-	}
-
-	k, err := b.InitializeKernel(ctx)
-	if err != nil {
-		log.Fatalf("failed initialize kernel: %s", err)
-	}
-
-	err = k.Execute(ctx)
-	if err != nil {
-		os.Exit(1)
-	}
+	return github.NewClient(httpClient).WithAuthToken(cfg.Token)
 }

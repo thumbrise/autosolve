@@ -12,43 +12,25 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package main
+package config
 
 import (
 	"context"
-	"log"
-	"os"
+	"time"
 
-	"github.com/thumbrise/autosolve/internal/bootstrap"
+	"github.com/thumbrise/autosolve/internal/infrastructure/config"
 )
 
-func main() {
-	ctx := context.Background()
-
-	eb := bootstrap.NewEarlyBootstrapper()
-
-	err := eb.Bootstrap(ctx)
-	if err != nil {
-		log.Fatalf("failed to start early-bootstrapper: %v", err)
+type Github struct {
+	Token  string `masq:"secret"       validate:"required"`
+	Owner  string `validate:"required"`
+	Repo   string `validate:"required"`
+	Issues struct {
+		ParseInterval     time.Duration `validate:"required"`
+		HttpClientTimeout time.Duration `validate:"required"`
 	}
+}
 
-	b, err := bootstrap.InitializeBootstrapper(
-		ctx,
-		eb.ConfigReader,
-		eb.Logger,
-		eb.ConfigApp,
-	)
-	if err != nil {
-		log.Fatalf("failed initialize bootstrapper: %s", err)
-	}
-
-	k, err := b.InitializeKernel(ctx)
-	if err != nil {
-		log.Fatalf("failed initialize kernel: %s", err)
-	}
-
-	err = k.Execute(ctx)
-	if err != nil {
-		os.Exit(1)
-	}
+func NewGithub(ctx context.Context, reader *config.Reader) (*Github, error) {
+	return config.Read[Github](ctx, reader)
 }

@@ -18,54 +18,40 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"net/http"
 	"time"
 
-	"github.com/google/go-github/v84/github"
-
-	"github.com/thumbrise/autosolve/internal/infrastructure/config"
+	"github.com/thumbrise/autosolve/internal/config"
 )
 
 type Worker struct {
-	cfgReader *config.Reader
+	cfg    *config.Github
+	logger *slog.Logger
+	parser *Parser
 }
 
-func NewWorker(cfgReader *config.Reader) *Worker {
-	return &Worker{cfgReader: cfgReader}
+func NewWorker(cfg *config.Github, logger *slog.Logger, parser *Parser) *Worker {
+	return &Worker{cfg: cfg, logger: logger, parser: parser}
 }
 
 func (w *Worker) Run(ctx context.Context) error {
-	logger := slog.With(slog.String("component", "issue-parser-worker"))
+	logger := w.logger.With(slog.String("component", "issue-parser-worker"))
 
-	logger.DebugContext(ctx, "Starting issue parser worker")
+	logger.InfoContext(ctx, "Starting issue parser worker")
 
-	var cfg Config
+	parser := w.parser
 
-	err := w.cfgReader.Read(ctx, &cfg, "github")
-	if err != nil {
-		return err
-	}
-
-	httpClient := &http.Client{
-		Transport: http.DefaultTransport,
-		Timeout:   cfg.Issues.HttpClientTimeout,
-	}
-
-	githubClient := github.NewClient(httpClient).WithAuthToken(cfg.Token)
-	parser := NewParser(githubClient, cfg.Owner, cfg.Repo)
-
-	ticker := time.NewTicker(cfg.Issues.ParseInterval)
+	ticker := time.NewTicker(w.cfg.Issues.ParseInterval)
 	defer ticker.Stop()
 
 	poll := func() error {
-		logger.DebugContext(ctx, "time to poll new issues")
+		logger.InfoContext(ctx, "time to poll new issues")
 
 		n, err := parser.Run(ctx)
 		if err != nil {
 			return fmt.Errorf("fail parser run: %w", err)
 		}
 
-		logger.DebugContext(ctx, fmt.Sprintf("parsed %d issues, waiting %s for next iteration", n, cfg.Issues.ParseInterval))
+		logger.InfoContext(ctx, fmt.Sprintf("parsed %d issues, waiting %s for next iteration", n, w.cfg.Issues.ParseInterval))
 
 		return nil
 	}
@@ -78,7 +64,7 @@ func (w *Worker) Run(ctx context.Context) error {
 	for {
 		select {
 		case <-ctx.Done():
-			logger.DebugContext(ctx, "context done")
+			logger.InfoContext(ctx, "context done")
 
 			return nil
 		case <-ticker.C:
