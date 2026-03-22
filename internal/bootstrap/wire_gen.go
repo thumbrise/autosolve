@@ -25,7 +25,6 @@ import (
 // Injectors from wire.go:
 
 func InitializeBootstrapper(ctx context.Context, cfgReader *config.Reader, logger *slog.Logger, cfgApp *config2.App) (*Bootstrapper, error) {
-	kernelKernel := kernel.NewKernel()
 	configGithub, err := config2.NewGithub(ctx, cfgReader)
 	if err != nil {
 		return nil, err
@@ -43,8 +42,11 @@ func InitializeBootstrapper(ctx context.Context, cfgReader *config.Reader, logge
 	parser := issue.NewParser(configGithub, client, issueRepository, logger)
 	worker := issue.NewWorker(configGithub, logger, parser)
 	scheduler := application.NewScheduler(worker)
-	schedule := cmds.NewSchedule(kernelKernel, scheduler)
-	v := cmd.Commands(schedule)
+	schedule := cmds.NewSchedule(scheduler)
+	test := cmds.NewTest(logger)
+	testSubTree := cmds.NewTestSubTree(logger)
+	v := cmd.NewCommands(schedule, test, testSubTree)
+	kernelKernel := kernel.NewKernel()
 	v2 := _wireValue
 	migrator := database.NewMigrator(db, logger, v2)
 	bootstrapper := NewBootstrapper(v, cfgApp, kernelKernel, migrator)

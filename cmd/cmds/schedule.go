@@ -18,14 +18,13 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/thumbrise/autosolve/internal/application"
-	"github.com/thumbrise/autosolve/internal/bootstrap/contracts"
 )
 
 type Schedule struct {
 	*cobra.Command
 }
 
-func NewSchedule(r contracts.RootCMD, scheduler *application.Scheduler) *Schedule {
+func NewSchedule(scheduler *application.Scheduler) *Schedule {
 	c := &cobra.Command{
 		Use:   "schedule",
 		Short: "Poll github and dispatch AI tools",
@@ -33,7 +32,6 @@ func NewSchedule(r contracts.RootCMD, scheduler *application.Scheduler) *Schedul
 			return scheduler.Run(cmd.Context())
 		},
 	}
-	r.AddCommand(c)
 
 	return &Schedule{c}
 }
