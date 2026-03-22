@@ -20,14 +20,12 @@ import (
 	"log"
 	"log/slog"
 
-	"github.com/spf13/viper"
-
 	"github.com/thumbrise/autosolve/internal/infrastructure/config"
 )
 
 func GetLoader() *config.Loader {
 	logger := slog.Default()
-	vp := viper.New()
+	vp := config.NewViper(logger)
 	loader := config.NewLoader(logger, vp)
 
 	err := loader.Load(config.LoadOptions{
