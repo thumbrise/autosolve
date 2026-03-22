@@ -28,10 +28,11 @@ import (
 
 type Runner struct {
 	processes []*Process
+	logger    *slog.Logger
 }
 
-func NewRunner() *Runner {
-	return &Runner{}
+func NewRunner(logger *slog.Logger) *Runner {
+	return &Runner{logger: logger}
 }
 
 type (
@@ -43,9 +44,18 @@ type (
 	}
 )
 
-func (r *Runner) Add(process *Process) {
+func shutdownNoOp(ctx context.Context) error {
+	return nil
+}
+
+// Add registers a process for concurrent execution.
+//
+// Panics if Process.Start is nil.
+// If Process.Name is empty, a warning is logged — named processes improve log readability.
+// If Process.Shutdown is nil, a no-op shutdown is assigned.
+func (r *Runner) Add(ctx context.Context, process *Process) {
 	if process.Name == "" {
-		slog.Warn("Runner.Add process name is empty")
+		r.logger.WarnContext(ctx, "Runner.Add process name is empty. Consider to add not empty name for clear logs observation")
 	}
 
 	if process.Start == nil {
@@ -53,14 +63,20 @@ func (r *Runner) Add(process *Process) {
 	}
 
 	if process.Shutdown == nil {
-		slog.Warn("Runner.Add shutdown function is nil")
+		r.logger.DebugContext(ctx, "Runner.Add shutdown function is nil, defaulting to no-op")
+
+		process.Shutdown = shutdownNoOp
 	}
 
 	r.processes = append(r.processes, process)
+
+	r.logger.DebugContext(ctx, "Runner.Add process added",
+		slog.Any("name", process.Name),
+	)
 }
 
 func (r *Runner) Wait(ctx context.Context) error {
-	slog.InfoContext(ctx, "runner starting")
+	r.logger.InfoContext(ctx, "runner starting")
 
 	ctxNotified, notifiedCancel := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
 	defer notifiedCancel()
@@ -79,7 +95,7 @@ func (r *Runner) Wait(ctx context.Context) error {
 		defer close(shutdownDone)
 
 		<-ctxGrp.Done()
-		slog.InfoContext(ctx, "runner context cancelled, shutting down processes")
+		r.logger.InfoContext(ctx, "runner context cancelled, shutting down processes")
 
 		ctxShutdown, shutdownCancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
 		defer shutdownCancel()
@@ -87,26 +103,26 @@ func (r *Runner) Wait(ctx context.Context) error {
 		r.shutdownProcesses(ctxShutdown, r.processes)
 	}()
 
-	slog.InfoContext(ctx, "runner waiting for processes")
+	r.logger.InfoContext(ctx, "runner waiting for processes")
 
 	err := grp.Wait()
 
 	<-shutdownDone
 
 	if err != nil && !errors.Is(err, context.Canceled) {
-		slog.ErrorContext(ctx, "runner error", slog.Any("error", err))
+		r.logger.ErrorContext(ctx, "runner error", slog.Any("error", err))
 
 		return err
 	}
 
-	slog.InfoContext(ctx, "runner finished")
+	r.logger.InfoContext(ctx, "runner finished")
 
 	return nil
 }
 
 func (r *Runner) startProcesses(ctx context.Context, processes []*Process, grp *errgroup.Group) {
 	for _, p := range processes {
-		logger := slog.With(
+		logger := r.logger.With(
 			slog.String("process", p.Name),
 		)
 
@@ -120,13 +136,9 @@ func (r *Runner) startProcesses(ctx context.Context, processes []*Process, grp *
 
 func (r *Runner) shutdownProcesses(ctx context.Context, processes []*Process) {
 	for _, p := range processes {
-		logger := slog.With(
+		logger := r.logger.With(
 			slog.String("process", p.Name),
 		)
-
-		if p.Shutdown == nil {
-			continue
-		}
 
 		err := p.Shutdown(ctx)
 		if err != nil {
