@@ -12,43 +12,18 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package main
+package config
 
 import (
 	"context"
-	"log"
-	"os"
 
-	"github.com/thumbrise/autosolve/internal/bootstrap"
+	"github.com/thumbrise/autosolve/internal/infrastructure/config"
 )
 
-func main() {
-	ctx := context.Background()
+type Database struct {
+	SQLitePath string `validate:"required"`
+}
 
-	eb := bootstrap.NewEarlyBootstrapper()
-
-	err := eb.Bootstrap(ctx)
-	if err != nil {
-		log.Fatalf("failed to start early-bootstrapper: %v", err)
-	}
-
-	b, err := bootstrap.InitializeBootstrapper(
-		ctx,
-		eb.ConfigReader,
-		eb.Logger,
-		eb.ConfigApp,
-	)
-	if err != nil {
-		log.Fatalf("failed initialize bootstrapper: %s", err)
-	}
-
-	k, err := b.InitializeKernel(ctx)
-	if err != nil {
-		log.Fatalf("failed initialize kernel: %s", err)
-	}
-
-	err = k.Execute(ctx)
-	if err != nil {
-		os.Exit(1)
-	}
+func NewDatabase(ctx context.Context, reader *config.Reader) (*Database, error) {
+	return config.Read[Database](ctx, reader)
 }

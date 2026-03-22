@@ -12,26 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//go:build wireinject
-
-package wire
+package dal
 
 import (
-	"context"
+	"errors"
 
-	"github.com/google/wire"
-
-	"github.com/thumbrise/autosolve/cmd"
-	"github.com/thumbrise/autosolve/internal"
-	"github.com/thumbrise/autosolve/internal/bootstrap"
+	"gorm.io/gorm"
 )
 
-func InitializeContainer(ctx context.Context) (*bootstrap.Container, error) {
-	wire.Build(
-		bootstrap.NewContainer,
-		internal.Bindings,
-		cmd.Bindings,
-	)
-
-	return &bootstrap.Container{}, nil
+func IsNotFound(err error) bool {
+	return errors.Is(err, gorm.ErrRecordNotFound)
 }

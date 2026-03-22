@@ -12,43 +12,32 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package main
+package kernel
 
 import (
 	"context"
-	"log"
-	"os"
 
-	"github.com/thumbrise/autosolve/internal/bootstrap"
+	"github.com/spf13/cobra"
 )
 
-func main() {
-	ctx := context.Background()
+type Kernel struct {
+	cmd *cobra.Command
+}
 
-	eb := bootstrap.NewEarlyBootstrapper()
-
-	err := eb.Bootstrap(ctx)
-	if err != nil {
-		log.Fatalf("failed to start early-bootstrapper: %v", err)
+func NewKernel() *Kernel {
+	cmd := &cobra.Command{
+		Use:          "autosolve",
+		Short:        "CLI autosolve",
+		SilenceUsage: true,
 	}
 
-	b, err := bootstrap.InitializeBootstrapper(
-		ctx,
-		eb.ConfigReader,
-		eb.Logger,
-		eb.ConfigApp,
-	)
-	if err != nil {
-		log.Fatalf("failed initialize bootstrapper: %s", err)
-	}
+	return &Kernel{cmd: cmd}
+}
 
-	k, err := b.InitializeKernel(ctx)
-	if err != nil {
-		log.Fatalf("failed initialize kernel: %s", err)
-	}
+func (k *Kernel) AddCommand(cmd *cobra.Command) {
+	k.cmd.AddCommand(cmd)
+}
 
-	err = k.Execute(ctx)
-	if err != nil {
-		os.Exit(1)
-	}
+func (k *Kernel) Execute(ctx context.Context) error {
+	return k.cmd.ExecuteContext(ctx)
 }

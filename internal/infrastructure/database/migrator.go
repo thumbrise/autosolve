@@ -12,32 +12,36 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package bootstrap
+package database
 
 import (
 	"context"
+	"errors"
+	"fmt"
+	"log/slog"
 
-	"github.com/spf13/cobra"
+	"gorm.io/gorm"
 )
 
-type Kernel struct {
-	cmd *cobra.Command
+var ErrMigrationFailed = errors.New("migration failed")
+
+type Migrator struct {
+	db     *gorm.DB
+	models []interface{}
+	logger *slog.Logger
 }
 
-func NewKernel() *Kernel {
-	cmd := &cobra.Command{
-		Use:          "autosolve",
-		Short:        "CLI autosolve",
-		SilenceUsage: true,
+func NewMigrator(db *gorm.DB, logger *slog.Logger, models []interface{}) *Migrator {
+	return &Migrator{db: db, logger: logger, models: models}
+}
+
+func (m *Migrator) Migrate(ctx context.Context) error {
+	err := m.db.WithContext(ctx).AutoMigrate(m.models...)
+	if err != nil {
+		return fmt.Errorf("%w: %w", ErrMigrationFailed, err)
 	}
 
-	return &Kernel{cmd: cmd}
-}
+	m.logger.InfoContext(ctx, "database migrate success")
 
-func (k *Kernel) AddCommand(cmd *cobra.Command) {
-	k.cmd.AddCommand(cmd)
-}
-
-func (k *Kernel) Execute(ctx context.Context) error {
-	return k.cmd.ExecuteContext(ctx)
+	return nil
 }
