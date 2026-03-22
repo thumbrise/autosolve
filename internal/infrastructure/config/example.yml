@@ -3,3 +3,4 @@ myParams:
   paramStr: "param"
   paramInt: 5
 myToken: "1234-abcd-qwer-1w2w"
+someRootStringParam: "i'm root param"
