@@ -19,6 +19,7 @@ import (
 	"github.com/thumbrise/autosolve/internal/infrastructure/dal/repositories"
 	"github.com/thumbrise/autosolve/internal/infrastructure/database"
 	"github.com/thumbrise/autosolve/internal/infrastructure/github"
+	"github.com/thumbrise/autosolve/pkg/longrun"
 	"log/slog"
 )
 
@@ -41,7 +42,8 @@ func InitializeBootstrapper(ctx context.Context, cfgReader *config.Reader, logge
 	issueRepository := repositories.NewIssueRepository(db, logger)
 	parser := issue.NewParser(configGithub, client, issueRepository, logger)
 	worker := issue.NewWorker(configGithub, logger, parser)
-	scheduler := application.NewScheduler(worker)
+	runner := longrun.NewRunner(logger)
+	scheduler := application.NewScheduler(worker, runner)
 	schedule := cmds.NewSchedule(scheduler)
 	test := cmds.NewTest(logger)
 	testSubTree := cmds.NewTestSubTree(logger)

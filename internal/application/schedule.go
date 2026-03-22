@@ -23,16 +23,15 @@ import (
 
 type Scheduler struct {
 	issueWorker *issue.Worker
+	runner      *longrun.Runner
 }
 
-func NewScheduler(issueWorker *issue.Worker) *Scheduler {
-	return &Scheduler{issueWorker: issueWorker}
+func NewScheduler(issueWorker *issue.Worker, runner *longrun.Runner) *Scheduler {
+	return &Scheduler{issueWorker: issueWorker, runner: runner}
 }
 
 func (s *Scheduler) Run(ctx context.Context) error {
-	runner := longrun.NewRunner()
-
-	runner.Add(&longrun.Process{
+	s.runner.Add(ctx, &longrun.Process{
 		Name: "polling issues",
 		Start: func(ctx context.Context) error {
 			return s.issueWorker.Run(ctx)
@@ -40,7 +39,7 @@ func (s *Scheduler) Run(ctx context.Context) error {
 		Shutdown: nil,
 	})
 
-	return runner.Wait(ctx)
+	return s.runner.Wait(ctx)
 	// classifier := retrier.WhitelistClassifier{}
 	// retrier.New(retrier.ExponentialBackoff(10, 2*time.Second))
 	// bexp := backoff.NewExponentialBackOff()

@@ -25,10 +25,13 @@ import (
 	"github.com/thumbrise/autosolve/internal/infrastructure/dal/repositories"
 	"github.com/thumbrise/autosolve/internal/infrastructure/database"
 	"github.com/thumbrise/autosolve/internal/infrastructure/github"
+	"github.com/thumbrise/autosolve/pkg/longrun"
 )
 
 var Bindings = wire.NewSet(
 	kernel.NewKernel,
+
+	longrun.NewRunner,
 
 	config.NewGithub,
 	config.NewDatabase,
