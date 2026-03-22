@@ -27,5 +27,7 @@ tasks:
 
   generate:
     desc: Generate all needed
+    aliases:
+      - gen
     cmds:
       - go tool wire $(go list ./... | grep -v /test)

@@ -34,12 +34,10 @@ var (
 )
 
 type Bootstrapper struct {
-	// Commands is consumed by Wire to trigger instantiation of all command providers.
-	// Commands register themselves on the Kernel via side-effect in their constructors.
-	Commands  []*cobra.Command
 	Kernel    *kernel.Kernel
 	Migrator  *database.Migrator
 	ConfigApp *config.App
+	Commands  []*cobra.Command
 }
 
 func NewBootstrapper(commands []*cobra.Command, configApp *config.App, kernel *kernel.Kernel, migrator *database.Migrator) *Bootstrapper {
@@ -47,10 +45,18 @@ func NewBootstrapper(commands []*cobra.Command, configApp *config.App, kernel *k
 }
 
 func (b *Bootstrapper) InitializeKernel(ctx context.Context) (*kernel.Kernel, error) {
+	b.registerCommands()
+
 	err := b.Migrator.Migrate(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %w", ErrDatabaseMigrate, err)
 	}
 
 	return b.Kernel, nil
+}
+
+func (b *Bootstrapper) registerCommands() {
+	for _, command := range b.Commands {
+		b.Kernel.AddCommand(command)
+	}
 }

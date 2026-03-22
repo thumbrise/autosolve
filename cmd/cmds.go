@@ -22,12 +22,51 @@ import (
 )
 
 var Bindings = wire.NewSet(
-	Commands,
+	NewCommands,
 	cmds.NewSchedule,
+	cmds.NewTest,
+	cmds.NewTestSubTree,
 )
 
-func Commands(
-	*cmds.Schedule,
+// NewCommands is the central CLI command registry.
+//
+// Wire instantiates all command providers listed as parameters,
+// then this function assembles them into []*cobra.Command for Kernel.
+//
+// Subcommand tree is built here — attach children to parents via AddCommand.
+// Only root-level commands are returned; Kernel receives and registers them.
+//
+// Example with namespace:
+//
+//	func NewCommands(
+//	    schedule *cmds.Schedule,
+//	    configCmd *cmds.ConfigCmd,
+//	    configSet *cmds.ConfigSet,
+//	) []*cobra.Command {
+//	    configCmd.AddCommand(configSet.Command) // build tree here
+//
+//	    return []*cobra.Command{               // return only root commands
+//	        schedule.Command,
+//	        configCmd.Command,
+//	    }
+//	}
+//
+// Adding a new command:
+//  1. Create constructor in cmd/cmds/ (e.g. NewVersion(...deps) *Version)
+//  2. Add provider to Bindings and parameter + line here
+//
+// Wire guarantees compile-time safety in both directions:
+//   - Provider in Bindings but missing here → "unused provider"
+//   - Parameter here but missing in Bindings → "no provider for"
+func NewCommands(
+	scheduleCMD *cmds.Schedule,
+	testCMD *cmds.Test,
+	testSubTree *cmds.TestSubTree,
 ) []*cobra.Command {
-	return []*cobra.Command{}
+	testCMD.AddCommand(testSubTree.Command)
+
+	return []*cobra.Command{
+		scheduleCMD.Command,
+		testCMD.Command,
+	}
 }

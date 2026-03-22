@@ -19,7 +19,6 @@ import (
 
 	"github.com/thumbrise/autosolve/internal/application"
 	"github.com/thumbrise/autosolve/internal/application/issue"
-	"github.com/thumbrise/autosolve/internal/bootstrap/contracts"
 	"github.com/thumbrise/autosolve/internal/bootstrap/kernel"
 	"github.com/thumbrise/autosolve/internal/config"
 	"github.com/thumbrise/autosolve/internal/infrastructure/dal"
@@ -30,10 +29,6 @@ import (
 
 var Bindings = wire.NewSet(
 	kernel.NewKernel,
-	wire.Bind(
-		new(contracts.RootCMD),
-		new(*kernel.Kernel),
-	),
 
 	config.NewGithub,
 	config.NewDatabase,
