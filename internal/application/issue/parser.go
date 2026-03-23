@@ -16,6 +16,7 @@ package issue
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"time"
@@ -26,6 +27,13 @@ import (
 	"github.com/thumbrise/autosolve/internal/infrastructure/dal"
 	"github.com/thumbrise/autosolve/internal/infrastructure/dal/model"
 	"github.com/thumbrise/autosolve/internal/infrastructure/dal/repositories"
+)
+
+// Sentinel errors for classifying parser failures.
+// Callers can use these with errors.Is to decide retry strategy.
+var (
+	ErrFetchIssues = errors.New("fetch issues")
+	ErrStoreIssues = errors.New("store issues")
 )
 
 type Parser struct {
@@ -44,7 +52,7 @@ func (p *Parser) Run(ctx context.Context) (int, error) {
 
 	opts, err := p.options(ctx)
 	if err != nil {
-		return 0, fmt.Errorf("failed to build options: %w", err)
+		return 0, fmt.Errorf("%w: build options: %w", ErrFetchIssues, err)
 	}
 
 	logger.DebugContext(ctx, "starting request to list issues",
@@ -53,7 +61,7 @@ func (p *Parser) Run(ctx context.Context) (int, error) {
 
 	issues, _, err := p.githubClient.Issues.ListByRepo(ctx, p.cfg.Owner, p.cfg.Repo, opts)
 	if err != nil {
-		return 0, fmt.Errorf("failed to fetch issues: %w", err)
+		return 0, fmt.Errorf("%w: list by repo: %w", ErrFetchIssues, err)
 	}
 
 	if len(issues) == 0 {
@@ -66,7 +74,7 @@ func (p *Parser) Run(ctx context.Context) (int, error) {
 
 	err = p.store(ctx, issues)
 	if err != nil {
-		return 0, err
+		return 0, fmt.Errorf("%w: %w", ErrStoreIssues, err)
 	}
 
 	logger.InfoContext(ctx, "issues stored", slog.Int("count", len(issues)))
