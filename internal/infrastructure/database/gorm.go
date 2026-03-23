@@ -25,7 +25,7 @@ import (
 	"github.com/thumbrise/autosolve/internal/config"
 )
 
-func NewGormDB(logger *slog.Logger, cfg *config.Database, cfgApp *config.App) (*gorm.DB, error) {
+func NewGormDB(logger *slog.Logger, cfg *config.Database, cfgApp *config.Log) (*gorm.DB, error) {
 	options := SQLiteOptions{
 		Path: cfg.SQLitePath,
 		Pragma: map[string]string{

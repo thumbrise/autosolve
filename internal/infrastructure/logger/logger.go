@@ -15,64 +15,78 @@
 package logger
 
 import (
+	"context"
 	"log/slog"
 	"os"
-	"strings"
-	"unicode/utf8"
 
 	"github.com/m-mizutani/masq"
+	slogmulti "github.com/samber/slog-multi"
+	"go.opentelemetry.io/contrib/bridges/otelslog"
+
+	"github.com/thumbrise/autosolve/internal/config"
+	stringsutil "github.com/thumbrise/autosolve/pkg/strings"
 )
 
-// maskPercentHead masks the first `percent` percent of the string's runes
+// maskReplacer masks the first `percent` percent of the string's runes
 // with the given symbol, leaving the rest visible.
-func maskPercentHead(symbol rune, percent int) masq.Redactor {
-	return masq.RedactString(func(s string) string {
-		if percent <= 0 {
-			return s
-		}
-
-		if percent >= 100 {
-			return strings.Repeat(string(symbol), utf8.RuneCountInString(s))
-		}
-
-		runes := []rune(s)
-		n := len(runes)
-
-		maskCount := n * percent / 100
-		if maskCount > n {
-			maskCount = n
-		}
-
-		return strings.Repeat(string(symbol), maskCount) + string(runes[maskCount:])
+func maskReplacer(symbol rune, percent int) func(groups []string, a slog.Attr) slog.Attr {
+	redactor := masq.RedactString(func(s string) string {
+		return stringsutil.MaskPercent(s, symbol, percent)
 	})
+
+	return masq.New(masq.WithTag("secret", redactor))
 }
 
-// level is shared between NewSlogLogger and Loader within this package.
-// It allows Loader to change the log level atomically after config is loaded.
-var level = &slog.LevelVar{} // INFO by default
+func defaultOptions() *slog.HandlerOptions {
+	return &slog.HandlerOptions{
+		ReplaceAttr: maskReplacer('*', 75),
+	}
+}
 
-// NewSlogLogger creates a fully configured *slog.Logger with no external dependencies.
-// Level is controlled via package-level LevelVar and can be changed atomically
-// at any time via Loader.Load (e.g. after config is loaded).
-// Secret masking (masq) is always active. Source info is collected but only emitted at debug level.
-func NewSlogLogger() *slog.Logger {
-	masqReplacer := masq.New(masq.WithTag("secret", maskPercentHead('*', 75)))
-
+// New creates basic *slog.Logger with no external dependencies.
+// Secret masking (masq) is always active.
+// Source info is not collected.
+// Level is Info.
+// Handler is TextHandler
+func New() *slog.Logger {
 	opts := &slog.HandlerOptions{
-		AddSource: true,
-		Level:     level,
-		ReplaceAttr: func(groups []string, a slog.Attr) slog.Attr {
-			// Strip source info when not in debug mode.
-			if a.Key == slog.SourceKey && level.Level() > slog.LevelDebug {
-				return slog.Attr{}
-			}
-
-			return masqReplacer(groups, a)
-		},
+		ReplaceAttr: maskReplacer('*', 75),
 	}
 
-	l := slog.New(slog.NewJSONHandler(os.Stdout, opts))
-	slog.SetDefault(l)
+	l := slog.New(slog.NewTextHandler(os.Stdout, opts))
 
 	return l
+}
+
+func WithConfig(ctx context.Context, cfg config.Log) *slog.Logger {
+	opts := defaultOptions()
+
+	if cfg.Debug {
+		opts.Level = slog.LevelDebug
+		opts.AddSource = true
+	}
+
+	l := slog.New(slog.NewTextHandler(os.Stdout, opts))
+
+	l.DebugContext(ctx, "logger loaded",
+		slog.Any("cfg", cfg),
+	)
+
+	return l
+}
+
+// WithOtelBridge extends the given logger with an OTEL slog bridge handler via fanout.
+//
+// The otelslog handler is created WITHOUT an explicit LoggerProvider — it resolves
+// global.GetLoggerProvider() on every log call. This means:
+//   - Before telemetry.New → global provider is noop → logs silently discarded by OTEL handler
+//   - After telemetry.New calls global.SetLoggerProvider → logs start flowing to collector
+//
+// This allows the logger to be fully configured in EarlyBootstrap (before any network I/O),
+// while the actual OTEL export activates later when the Wire graph creates Telemetry.
+func WithOtelBridge(logger *slog.Logger, serviceName string) *slog.Logger {
+	existingHandler := logger.Handler()
+	otelHandler := otelslog.NewHandler(serviceName)
+
+	return slog.New(slogmulti.Fanout(existingHandler, otelHandler))
 }

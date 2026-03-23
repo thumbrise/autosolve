@@ -20,10 +20,10 @@ import (
 	"github.com/thumbrise/autosolve/internal/infrastructure/config"
 )
 
-type App struct {
+type Log struct {
 	Debug bool
 }
 
-func NewApp(ctx context.Context, reader *config.Reader) (*App, error) {
-	return config.Read[App](ctx, reader)
+func NewLog(ctx context.Context, reader *config.Reader) (*Log, error) {
+	return config.Read[Log](ctx, reader)
 }
