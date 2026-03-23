@@ -112,6 +112,10 @@ func (c *Reader) mapFieldErr(fe validator.FieldError, viperKey string) error {
 	return fmt.Errorf("%w: %w", NewInvalidVariableError(varName), fe)
 }
 
+func (c *Reader) SetLogger(logger *slog.Logger) {
+	c.logger = logger
+}
+
 // Read uses go generics for inspect needed type and config key and return new instance.
 //
 // Using reflection to retrieve name of type.

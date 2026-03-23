@@ -22,6 +22,7 @@ import (
 )
 
 var Bindings = wire.NewSet(
+	NewRoot,
 	NewCommands,
 	cmds.NewSchedule,
 	cmds.NewTest,
@@ -31,10 +32,10 @@ var Bindings = wire.NewSet(
 // NewCommands is the central CLI command registry.
 //
 // Wire instantiates all command providers listed as parameters,
-// then this function assembles them into []*cobra.Command for Kernel.
+// then this function assembles them into []*cobra.Command for Root.
 //
 // Subcommand tree is built here — attach children to parents via AddCommand.
-// Only root-level commands are returned; Kernel receives and registers them.
+// Only root-level commands are returned; Root receives and registers them.
 //
 // Example with namespace:
 //

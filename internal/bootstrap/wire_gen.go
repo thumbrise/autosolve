@@ -12,30 +12,30 @@ import (
 	"github.com/thumbrise/autosolve/cmd/cmds"
 	"github.com/thumbrise/autosolve/internal/application"
 	"github.com/thumbrise/autosolve/internal/application/issue"
-	"github.com/thumbrise/autosolve/internal/bootstrap/kernel"
 	config2 "github.com/thumbrise/autosolve/internal/config"
 	"github.com/thumbrise/autosolve/internal/infrastructure/config"
 	"github.com/thumbrise/autosolve/internal/infrastructure/dal"
 	"github.com/thumbrise/autosolve/internal/infrastructure/dal/repositories"
 	"github.com/thumbrise/autosolve/internal/infrastructure/database"
 	"github.com/thumbrise/autosolve/internal/infrastructure/github"
+	"github.com/thumbrise/autosolve/internal/infrastructure/telemetry"
 	"github.com/thumbrise/autosolve/pkg/longrun"
 	"log/slog"
 )
 
 // Injectors from wire.go:
 
-func InitializeBootstrapper(ctx context.Context, cfgReader *config.Reader, logger *slog.Logger, cfgApp *config2.App) (*Bootstrapper, error) {
-	configGithub, err := config2.NewGithub(ctx, cfgReader)
+func InitializeKernel(contextContext context.Context, reader *config.Reader, log *config2.Log, logger *slog.Logger, telemetryTelemetry *telemetry.Telemetry) (*Kernel, error) {
+	configGithub, err := config2.NewGithub(contextContext, reader)
 	if err != nil {
 		return nil, err
 	}
-	client := github.NewGithubClient(ctx, configGithub)
-	configDatabase, err := config2.NewDatabase(ctx, cfgReader)
+	client := github.NewGithubClient(contextContext, configGithub)
+	configDatabase, err := config2.NewDatabase(contextContext, reader)
 	if err != nil {
 		return nil, err
 	}
-	db, err := database.NewGormDB(logger, configDatabase, cfgApp)
+	db, err := database.NewGormDB(logger, configDatabase, log)
 	if err != nil {
 		return nil, err
 	}
@@ -48,11 +48,11 @@ func InitializeBootstrapper(ctx context.Context, cfgReader *config.Reader, logge
 	test := cmds.NewTest(logger)
 	testSubTree := cmds.NewTestSubTree(logger)
 	v := cmd.NewCommands(schedule, test, testSubTree)
-	kernelKernel := kernel.NewKernel()
 	v2 := _wireValue
 	migrator := database.NewMigrator(db, logger, v2)
-	bootstrapper := NewBootstrapper(v, cfgApp, kernelKernel, migrator)
-	return bootstrapper, nil
+	root := cmd.NewRoot()
+	kernel := NewKernel(v, logger, migrator, root, telemetryTelemetry)
+	return kernel, nil
 }
 
 var (

@@ -12,32 +12,24 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package kernel
+package cmd
 
 import (
-	"context"
-
 	"github.com/spf13/cobra"
 )
 
-type Kernel struct {
-	cmd *cobra.Command
+type Root struct {
+	*cobra.Command
 }
 
-func NewKernel() *Kernel {
-	cmd := &cobra.Command{
+func NewRoot() *Root {
+	c := &cobra.Command{
 		Use:          "autosolve",
 		Short:        "CLI autosolve",
 		SilenceUsage: true,
 	}
 
-	return &Kernel{cmd: cmd}
-}
-
-func (k *Kernel) AddCommand(cmd *cobra.Command) {
-	k.cmd.AddCommand(cmd)
-}
-
-func (k *Kernel) Execute(ctx context.Context) error {
-	return k.cmd.ExecuteContext(ctx)
+	return &Root{
+		c,
+	}
 }
