@@ -17,7 +17,6 @@ package main
 import (
 	"context"
 	"log"
-	"os"
 
 	"github.com/thumbrise/autosolve/internal/bootstrap"
 )
@@ -43,6 +42,6 @@ func main() {
 
 	err = kernel.Execute(ctx)
 	if err != nil {
-		os.Exit(1)
+		log.Fatalf("execution failed: %s", err)
 	}
 }

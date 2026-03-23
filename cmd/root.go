@@ -24,9 +24,10 @@ type Root struct {
 
 func NewRoot() *Root {
 	c := &cobra.Command{
-		Use:          "autosolve",
-		Short:        "CLI autosolve",
-		SilenceUsage: true,
+		Use:           "autosolve",
+		Short:         "CLI autosolve",
+		SilenceUsage:  true,
+		SilenceErrors: true,
 	}
 
 	return &Root{
