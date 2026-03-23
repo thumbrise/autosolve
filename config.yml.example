@@ -1,11 +1,37 @@
-app:
+log:
   debug: true
+
 database:
   sqlitePath: runtime/database/sqlite.db
+
 github:
   token: 1234
   owner: thumbrise
-  repo: otelext
+  repo: autosolve
   issues:
     parseInterval: 5s
     httpClientTimeout: 5s
+
+# OpenTelemetry Configuration
+# See: https://opentelemetry.io/docs/specs/otel/configuration/sdk-environment-variables/
+#
+# All fields can be overridden via environment variables with AUTOSOLVE_ prefix.
+# Example: otel.serviceName → AUTOSOLVE_OTEL_SERVICENAME
+otel:
+  serviceName: autosolve
+  resourceAttributes: "service.version=1.0.0,deployment.environment=production"
+  sdkDisabled: false
+  propagators: "tracecontext,baggage"
+  traces:
+    exporter: otlp
+    sampler: parentbased_always_on
+    samplerArg: "1.0"
+  metrics:
+    exporter: otlp
+  logs:
+    exporter: otlp
+  exporter:
+    endpoint: "localhost:4317"
+    protocol: grpc
+    headers: "uptrace-dsn=http://aiji-qvjRjFBnObLuzAkpA@localhost:14318?grpc=14317"
+    timeout: 10s
