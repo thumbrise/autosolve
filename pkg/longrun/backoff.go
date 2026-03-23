@@ -20,15 +20,30 @@ import (
 	"time"
 )
 
+const (
+	// UnlimitedRetries disables the retry limit — the task retries forever
+	// (until a permanent error or context cancellation).
+	// Use with caution: set this explicitly to opt in.
+	UnlimitedRetries = -1
+
+	// DefaultMaxRetries is used when MaxRetries is 0 (zero-value).
+	DefaultMaxRetries = 3
+)
+
 // BackoffConfig controls exponential backoff between retry attempts.
 type BackoffConfig struct {
 	Initial    time.Duration
 	Max        time.Duration
 	Multiplier float64
-	MaxRetries int // 0 = unlimited
+	// MaxRetries limits consecutive retry attempts.
+	//   0 (zero-value) → DefaultMaxRetries (3).
+	//  -1 (UnlimitedRetries) → no limit.
+	//  >0 → exact limit.
+	MaxRetries int
 }
 
 // DefaultBackoff returns a sensible default backoff configuration.
+// MaxRetries is 0, which resolves to DefaultMaxRetries (3).
 func DefaultBackoff() BackoffConfig {
 	return BackoffConfig{
 		Initial:    1 * time.Second,
@@ -40,7 +55,7 @@ func DefaultBackoff() BackoffConfig {
 
 func (b *BackoffConfig) duration(attempt int) time.Duration {
 	d := float64(b.Initial) * math.Pow(b.Multiplier, float64(attempt))
-	if d > float64(b.Max) {
+	if b.Max > 0 && d > float64(b.Max) {
 		d = float64(b.Max)
 	}
 

@@ -17,8 +17,6 @@ package longrun
 // ResolveRestartStrategy maps a RestartPolicy enum to a concrete RestartStrategy.
 func ResolveRestartStrategy(p RestartPolicy) RestartStrategy {
 	switch p {
-	case Always:
-		return AlwaysRestart{}
 	case OnFailure:
 		return RestartOnFailure{}
 	case Never:
@@ -39,11 +37,17 @@ func ResolveErrorClassifier(transientErrors []error) ErrorClassifier {
 }
 
 // ResolveAttemptTracker builds an AttemptTracker from MaxRetries.
-// 0 → unlimited retries.
+//
+//	UnlimitedRetries (-1) → unlimited retries.
+//	0 (zero-value)        → DefaultMaxRetries (3).
+//	>0                    → exact limit.
 func ResolveAttemptTracker(maxRetries int) AttemptTracker {
-	if maxRetries <= 0 {
+	switch {
+	case maxRetries == UnlimitedRetries:
 		return NewUnlimitedAttempts()
+	case maxRetries <= 0:
+		return NewLimitedAttempts(DefaultMaxRetries)
+	default:
+		return NewLimitedAttempts(maxRetries)
 	}
-
-	return NewLimitedAttempts(maxRetries)
 }

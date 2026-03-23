@@ -184,32 +184,6 @@ func TestTask_OnFailure_WrappedTransientError_Retries(t *testing.T) {
 	}
 }
 
-func TestTask_Always_RestartsOnSuccess(t *testing.T) {
-	var calls atomic.Int32
-
-	ctx, cancel := context.WithCancel(context.Background())
-
-	task := longrun.NewTask("test", func(ctx context.Context) error {
-		n := calls.Add(1)
-		if n >= 3 {
-			cancel()
-		}
-
-		return nil
-	}, longrun.TaskOptions{
-		Restart: longrun.Always,
-	})
-
-	err := task.Wait(ctx)
-	if err != nil {
-		t.Fatalf("Wait() = %v, want nil", err)
-	}
-
-	if calls.Load() < 3 {
-		t.Fatalf("calls = %d, want >= 3", calls.Load())
-	}
-}
-
 // --- MaxRetries ---
 
 func TestTask_MaxRetries_StopsAfterLimit(t *testing.T) {

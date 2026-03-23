@@ -16,7 +16,6 @@ package longrun
 
 import (
 	"context"
-	"errors"
 	"log/slog"
 	"time"
 )
@@ -32,14 +31,20 @@ type RestartPolicy int
 
 const (
 	Never     RestartPolicy = iota // do not restart (default)
-	Always                         // restart on success and failure
 	OnFailure                      // restart only on failure
 )
 
 // TaskOptions configures the behaviour of a Task.
 //
+// The two axes — Interval and Restart — form a simple state machine:
+//
+//	Interval=0  + Restart=Never     → one-shot: run once, stop.
+//	Interval=0  + Restart=OnFailure → one-shot with retries: retry transient errors, stop on success or permanent error.
+//	Interval>0  + Restart=Never     → periodic: ticker loop, stop on first error.
+//	Interval>0  + Restart=OnFailure → periodic with retries: ticker loop, restart loop on transient errors.
+//
 // By default all errors are permanent — a single failure stops the task.
-// To enable retries, set Restart to OnFailure or Always and list the
+// To enable retries, set Restart to OnFailure and list the
 // errors that should be retried in TransientErrors (whitelist).
 // Only errors matching via errors.Is are considered transient;
 // everything else remains permanent and stops the task immediately.
@@ -127,21 +132,11 @@ func (t *Task) runWithPolicy(ctx context.Context) error {
 		if err == nil {
 			t.attempts.Reset()
 
-			if ctx.Err() != nil {
-				return nil //nolint:nilerr // context cancelled, clean shutdown
-			}
-
-			if !t.restart.ShouldRestart(nil) {
-				return nil
-			}
-
-			t.logger.InfoContext(ctx, "completed, restarting")
-
-			continue
+			return nil
 		}
 
-		// Context cancelled — not a task error.
-		if errors.Is(err, context.Canceled) {
+		// Context done — not a task error.
+		if ctx.Err() != nil {
 			return nil
 		}
 

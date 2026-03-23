@@ -30,11 +30,6 @@ type NeverRestart struct{}
 
 func (NeverRestart) ShouldRestart(error) bool { return false }
 
-// AlwaysRestart restarts the task after both success and failure.
-type AlwaysRestart struct{}
-
-func (AlwaysRestart) ShouldRestart(error) bool { return true }
-
 // RestartOnFailure restarts only when the task returned a non-nil error.
 type RestartOnFailure struct{}
 

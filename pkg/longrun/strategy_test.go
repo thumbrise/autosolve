@@ -35,17 +35,6 @@ func TestNeverRestart(t *testing.T) {
 	}
 }
 
-func TestAlwaysRestart(t *testing.T) {
-	s := longrun.AlwaysRestart{}
-	if !s.ShouldRestart(nil) {
-		t.Error("ShouldRestart(nil) = false, want true")
-	}
-
-	if !s.ShouldRestart(errors.New("err")) {
-		t.Error("ShouldRestart(err) = false, want true")
-	}
-}
-
 func TestRestartOnFailure(t *testing.T) {
 	s := longrun.RestartOnFailure{}
 	if s.ShouldRestart(nil) {
