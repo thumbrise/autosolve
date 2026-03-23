@@ -137,7 +137,7 @@ func (t *Task) runWithPolicy(ctx context.Context) error {
 
 		// Context done — not a task error.
 		if ctx.Err() != nil {
-			return nil
+			return nil //nolint:nilerr //err is non-nil here but context termination is not a task failure
 		}
 
 		// --- failure path ---
