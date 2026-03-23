@@ -19,7 +19,6 @@ import (
 	"github.com/thumbrise/autosolve/internal/infrastructure/database"
 	"github.com/thumbrise/autosolve/internal/infrastructure/github"
 	"github.com/thumbrise/autosolve/internal/infrastructure/telemetry"
-	"github.com/thumbrise/autosolve/pkg/longrun"
 	"log/slog"
 )
 
@@ -42,8 +41,7 @@ func InitializeKernel(contextContext context.Context, reader *config.Reader, log
 	issueRepository := repositories.NewIssueRepository(db, logger)
 	parser := issue.NewParser(configGithub, client, issueRepository, logger)
 	worker := issue.NewWorker(configGithub, logger, parser)
-	runner := longrun.NewRunner(logger)
-	scheduler := application.NewScheduler(worker, runner)
+	scheduler := application.NewScheduler(worker, logger)
 	schedule := cmds.NewSchedule(scheduler)
 	test := cmds.NewTest(logger)
 	testSubTree := cmds.NewTestSubTree(logger)

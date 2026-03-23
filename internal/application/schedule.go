@@ -16,6 +16,7 @@ package application
 
 import (
 	"context"
+	"log/slog"
 
 	"github.com/thumbrise/autosolve/internal/application/issue"
 	"github.com/thumbrise/autosolve/pkg/longrun"
@@ -23,29 +24,19 @@ import (
 
 type Scheduler struct {
 	issueWorker *issue.Worker
-	runner      *longrun.Runner
+	logger      *slog.Logger
 }
 
-func NewScheduler(issueWorker *issue.Worker, runner *longrun.Runner) *Scheduler {
-	return &Scheduler{issueWorker: issueWorker, runner: runner}
+func NewScheduler(issueWorker *issue.Worker, logger *slog.Logger) *Scheduler {
+	return &Scheduler{issueWorker: issueWorker, logger: logger}
 }
 
 func (s *Scheduler) Run(ctx context.Context) error {
-	s.runner.Add(ctx, &longrun.Process{
-		Name: "polling issues",
-		Start: func(ctx context.Context) error {
-			return s.issueWorker.Run(ctx)
-		},
-		Shutdown: nil,
+	runner := longrun.NewRunner(longrun.RunnerOptions{
+		Logger: s.logger,
 	})
 
-	return s.runner.Wait(ctx)
-	// classifier := retrier.WhitelistClassifier{}
-	// retrier.New(retrier.ExponentialBackoff(10, 2*time.Second))
-	// bexp := backoff.NewExponentialBackOff()
-	// bexp.MaxInterval = 30 * time.Second
-	// bexp.MaxElapsedTime = 0
-	// b := backoff.WithMaxRetries(bexp, 50)
+	runner.Add(s.issueWorker.Task())
 
-	// return nil
+	return runner.Wait(ctx)
 }
