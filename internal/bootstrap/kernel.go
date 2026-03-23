@@ -49,18 +49,14 @@ func NewKernel(commands []*cobra.Command, logger *slog.Logger, migrator *databas
 func (b *Kernel) Execute(ctx context.Context) error {
 	b.registerCommands()
 
+	defer b.shutdown(ctx, 5*time.Second, b.telemetry.Shutdown)
+
 	err := b.migrator.Migrate(ctx)
 	if err != nil {
-		b.shutdown(ctx, 5*time.Second, b.telemetry.Shutdown)
-
 		return fmt.Errorf("%w: %w", ErrDatabaseMigrate, err)
 	}
 
-	err = b.rootCommand.ExecuteContext(ctx)
-
-	b.shutdown(ctx, 5*time.Second, b.telemetry.Shutdown)
-
-	return err
+	return b.rootCommand.ExecuteContext(ctx)
 }
 
 func (b *Kernel) registerCommands() {
