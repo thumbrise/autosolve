@@ -239,6 +239,59 @@ func TestTask_MaxRetries_StopsAfterLimit(t *testing.T) {
 	}
 }
 
+func TestTask_MaxRetries_ResetsAfterSuccessfulRunLoop(t *testing.T) {
+	// Scenario: interval task with OnFailure + MaxRetries=2.
+	// Transient errors are separated by successful runLoop cycles.
+	// The attempt counter must reset after each successful cycle,
+	// so intermittent failures don't accumulate toward MaxRetries.
+	//
+	// Timeline:
+	//   runLoop#1: call 1 ok, call 2 transient → retry (attempt 0→1)
+	//   runLoop#2: call 3 ok, call 4 transient → retry (attempt must be 0→1 again, NOT 1→2)
+	//   runLoop#3: call 5 ok, call 6 transient → retry (attempt must be 0→1 again)
+	//   runLoop#4: call 7 ok → cancel
+	//
+	// Without the reset, attempt would reach MaxRetries=2 at the second
+	// transient error and the task would stop permanently.
+	var calls atomic.Int32
+
+	ctx, cancel := context.WithCancel(context.Background())
+
+	b := fastBackoff()
+	b.MaxRetries = 2
+
+	task := longrun.NewTask("test", func(ctx context.Context) error {
+		n := calls.Add(1)
+
+		// Even calls produce transient errors, odd calls succeed.
+		// Each runLoop: immediate call (odd, ok) → tick call (even, transient).
+		switch {
+		case n >= 7:
+			cancel()
+
+			return nil
+		case n%2 == 0:
+			return errTransient
+		default:
+			return nil
+		}
+	}, longrun.TaskOptions{
+		Interval:        1 * time.Millisecond,
+		Restart:         longrun.OnFailure,
+		Backoff:         b,
+		TransientErrors: []error{errTransient},
+	})
+
+	err := task.Wait(ctx)
+	if err != nil {
+		t.Fatalf("Wait() = %v, want nil (attempt counter should reset after successful runLoop)", err)
+	}
+
+	if calls.Load() < 7 {
+		t.Fatalf("calls = %d, want >= 7", calls.Load())
+	}
+}
+
 // --- Interval mode ---
 
 func TestTask_Interval_RunsImmediatelyThenOnTick(t *testing.T) {
