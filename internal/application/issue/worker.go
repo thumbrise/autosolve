@@ -18,9 +18,9 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"time"
 
 	"github.com/thumbrise/autosolve/internal/config"
+	"github.com/thumbrise/autosolve/pkg/longrun"
 )
 
 type Worker struct {
@@ -33,44 +33,26 @@ func NewWorker(cfg *config.Github, logger *slog.Logger, parser *Parser) *Worker 
 	return &Worker{cfg: cfg, logger: logger, parser: parser}
 }
 
-func (w *Worker) Run(ctx context.Context) error {
-	logger := w.logger.With(slog.String("component", "issue-parser-worker"))
+// Task returns a longrun.Task that polls issues on the configured interval.
+func (w *Worker) Task() *longrun.Task {
+	return longrun.NewTask("polling issues", w.poll, longrun.TaskOptions{
+		Interval:        w.cfg.Issues.ParseInterval,
+		Restart:         longrun.OnFailure,
+		Backoff:         longrun.DefaultBackoff(),
+		TransientErrors: []error{ErrFetchIssues, ErrStoreIssues},
+		Logger:          w.logger,
+	})
+}
 
-	logger.InfoContext(ctx, "Starting issue parser worker")
+func (w *Worker) poll(ctx context.Context) error {
+	w.logger.InfoContext(ctx, "time to poll new issues")
 
-	parser := w.parser
-
-	ticker := time.NewTicker(w.cfg.Issues.ParseInterval)
-	defer ticker.Stop()
-
-	poll := func() error {
-		logger.InfoContext(ctx, "time to poll new issues")
-
-		n, err := parser.Run(ctx)
-		if err != nil {
-			return fmt.Errorf("fail parser run: %w", err)
-		}
-
-		logger.InfoContext(ctx, fmt.Sprintf("parsed %d issues, waiting %s for next iteration", n, w.cfg.Issues.ParseInterval))
-
-		return nil
+	n, err := w.parser.Run(ctx)
+	if err != nil {
+		return fmt.Errorf("poll: %w", err)
 	}
 
-	// Poll immediately on startup.
-	if err := poll(); err != nil {
-		return err
-	}
+	w.logger.InfoContext(ctx, fmt.Sprintf("parsed %d issues", n))
 
-	for {
-		select {
-		case <-ctx.Done():
-			logger.InfoContext(ctx, "context done")
-
-			return nil
-		case <-ticker.C:
-			if err := poll(); err != nil {
-				return err
-			}
-		}
-	}
+	return nil
 }
