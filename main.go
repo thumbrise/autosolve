@@ -16,17 +16,33 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log"
+	"os"
+	"os/signal"
+	"syscall"
 
 	"github.com/thumbrise/autosolve/internal/bootstrap"
 )
 
 func main() {
-	ctx := context.Background()
+	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	exitCode := 0
 
+	if err := run(ctx); err != nil {
+		log.Println(err)
+
+		exitCode = 1
+	}
+
+	cancel()
+	os.Exit(exitCode)
+}
+
+func run(ctx context.Context) error {
 	boot, err := bootstrap.Bootstrap(ctx)
 	if err != nil {
-		log.Fatalf("failed to bootstrap: %s", err)
+		return fmt.Errorf("failed to bootstrap: %w", err)
 	}
 
 	kernel, err := bootstrap.InitializeKernel(
@@ -37,11 +53,13 @@ func main() {
 		boot.Telemetry,
 	)
 	if err != nil {
-		log.Fatalf("failed initialize kernel: %s", err)
+		return fmt.Errorf("failed initialize kernel: %w", err)
 	}
 
 	err = kernel.Execute(ctx)
 	if err != nil {
-		log.Fatalf("execution failed: %s", err)
+		return fmt.Errorf("execution failed: %w", err)
 	}
+
+	return nil
 }
