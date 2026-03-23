@@ -112,6 +112,9 @@ func (c *Reader) mapFieldErr(fe validator.FieldError, viperKey string) error {
 	return fmt.Errorf("%w: %w", NewInvalidVariableError(varName), fe)
 }
 
+// SetLogger replaces the reader's logger. Not safe for concurrent use.
+// Intended for bootstrap phase only — to upgrade the initial basic logger
+// to the fully configured one before any concurrent work begins.
 func (c *Reader) SetLogger(logger *slog.Logger) {
 	c.logger = logger
 }
