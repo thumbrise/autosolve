@@ -25,29 +25,23 @@ import (
 func main() {
 	ctx := context.Background()
 
-	eb := bootstrap.NewEarlyBootstrapper()
-
-	err := eb.Bootstrap(ctx)
+	boot, err := bootstrap.Bootstrap(ctx)
 	if err != nil {
-		log.Fatalf("failed to start early-bootstrapper: %v", err)
+		log.Fatalf("failed to bootstrap: %s", err)
 	}
 
-	b, err := bootstrap.InitializeBootstrapper(
+	kernel, err := bootstrap.InitializeKernel(
 		ctx,
-		eb.ConfigReader,
-		eb.Logger,
-		eb.ConfigApp,
+		boot.ConfigReader,
+		boot.ConfigLog,
+		boot.Logger,
+		boot.Telemetry,
 	)
-	if err != nil {
-		log.Fatalf("failed initialize bootstrapper: %s", err)
-	}
-
-	k, err := b.InitializeKernel(ctx)
 	if err != nil {
 		log.Fatalf("failed initialize kernel: %s", err)
 	}
 
-	err = k.Execute(ctx)
+	err = kernel.Execute(ctx)
 	if err != nil {
 		os.Exit(1)
 	}

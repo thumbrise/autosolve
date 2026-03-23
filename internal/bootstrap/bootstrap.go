@@ -18,45 +18,98 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 
-	"github.com/spf13/cobra"
-
-	"github.com/thumbrise/autosolve/internal/bootstrap/kernel"
 	"github.com/thumbrise/autosolve/internal/config"
-	"github.com/thumbrise/autosolve/internal/infrastructure/database"
+	configinfra "github.com/thumbrise/autosolve/internal/infrastructure/config"
+	loggerinfra "github.com/thumbrise/autosolve/internal/infrastructure/logger"
+	"github.com/thumbrise/autosolve/internal/infrastructure/telemetry"
 )
 
-const envPrefix = "AUTOSOLVE"
+type Boot struct {
+	ConfigReader *configinfra.Reader
+	Logger       *slog.Logger
+	ConfigLog    *config.Log
+	ConfigOtel   *config.Otel
+	Telemetry    *telemetry.Telemetry
+}
 
 var (
-	ErrConfigLoad      = errors.New("cannot load config")
-	ErrDatabaseMigrate = errors.New("cannot migrate database")
+	ErrBootstrapConfig    = errors.New("cannot bootstrap config")
+	ErrBootstrapTelemetry = errors.New("cannot bootstrap telemetry")
+	ErrConfigLoad         = errors.New("cannot load config")
+	ErrConfigAppRead      = errors.New("cannot read app config")
+	ErrConfigOtelRead     = errors.New("cannot read otel config")
 )
 
-type Bootstrapper struct {
-	Kernel    *kernel.Kernel
-	Migrator  *database.Migrator
-	ConfigApp *config.App
-	Commands  []*cobra.Command
-}
+func Bootstrap(ctx context.Context) (*Boot, error) {
+	b := &Boot{}
 
-func NewBootstrapper(commands []*cobra.Command, configApp *config.App, kernel *kernel.Kernel, migrator *database.Migrator) *Bootstrapper {
-	return &Bootstrapper{Commands: commands, ConfigApp: configApp, Kernel: kernel, Migrator: migrator}
-}
-
-func (b *Bootstrapper) InitializeKernel(ctx context.Context) (*kernel.Kernel, error) {
-	b.registerCommands()
-
-	err := b.Migrator.Migrate(ctx)
+	reader, cfgLog, cfgOtel, err := b.bootstrapConfig(ctx, loggerinfra.New())
 	if err != nil {
-		return nil, fmt.Errorf("%w: %w", ErrDatabaseMigrate, err)
+		return nil, fmt.Errorf("%w: %w", ErrBootstrapConfig, err)
 	}
 
-	return b.Kernel, nil
+	logger := b.bootstrapLogger(ctx, cfgOtel, cfgLog)
+
+	reader.SetLogger(logger)
+
+	tel, err := b.bootstrapTelemetry(ctx, cfgOtel, logger)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %w", ErrBootstrapTelemetry, err)
+	}
+
+	b.ConfigReader = reader
+	b.ConfigLog = cfgLog
+	b.ConfigOtel = cfgOtel
+	b.Logger = logger
+	b.Telemetry = tel
+
+	return b, nil
 }
 
-func (b *Bootstrapper) registerCommands() {
-	for _, command := range b.Commands {
-		b.Kernel.AddCommand(command)
+func (b *Boot) bootstrapLogger(ctx context.Context, cfgOtel *config.Otel, cfgLog *config.Log) *slog.Logger {
+	result := loggerinfra.WithConfig(ctx, *cfgLog)
+
+	if cfgOtel.Logs.Exporter != "none" && cfgOtel.Logs.Exporter != "" && !cfgOtel.SDKDisabled {
+		result = loggerinfra.WithOtelBridge(result, cfgOtel.ServiceName)
 	}
+
+	slog.SetDefault(result)
+
+	return result
+}
+
+func (b *Boot) bootstrapConfig(ctx context.Context, logger *slog.Logger) (*configinfra.Reader, *config.Log, *config.Otel, error) {
+	loader := configinfra.NewLoader(logger, configinfra.NewViper(logger))
+
+	err := loader.Load(configinfra.LoadOptions{
+		EnvPrefix: envPrefix,
+		File: &configinfra.LoadOptionsFile{
+			Path: ".",
+			Name: "config",
+			Type: "yml",
+		},
+	})
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("%w: %w", ErrConfigLoad, err)
+	}
+
+	reader := loader.GetReader()
+
+	cfgLog, err := config.NewLog(ctx, reader)
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("%w: %w", ErrConfigAppRead, err)
+	}
+
+	cfgOtel, err := config.NewOtel(ctx, reader)
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("%w: %w", ErrConfigOtelRead, err)
+	}
+
+	return reader, cfgLog, cfgOtel, nil
+}
+
+func (b *Boot) bootstrapTelemetry(ctx context.Context, cfg *config.Otel, logger *slog.Logger) (*telemetry.Telemetry, error) {
+	return telemetry.New(ctx, cfg, logger)
 }

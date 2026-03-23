@@ -19,7 +19,6 @@ import (
 
 	"github.com/thumbrise/autosolve/internal/application"
 	"github.com/thumbrise/autosolve/internal/application/issue"
-	"github.com/thumbrise/autosolve/internal/bootstrap/kernel"
 	"github.com/thumbrise/autosolve/internal/config"
 	"github.com/thumbrise/autosolve/internal/infrastructure/dal"
 	"github.com/thumbrise/autosolve/internal/infrastructure/dal/repositories"
@@ -29,8 +28,6 @@ import (
 )
 
 var Bindings = wire.NewSet(
-	kernel.NewKernel,
-
 	longrun.NewRunner,
 
 	config.NewGithub,

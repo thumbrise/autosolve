@@ -26,19 +26,21 @@ import (
 	"github.com/thumbrise/autosolve/internal"
 	"github.com/thumbrise/autosolve/internal/config"
 	configinfra "github.com/thumbrise/autosolve/internal/infrastructure/config"
+	"github.com/thumbrise/autosolve/internal/infrastructure/telemetry"
 )
 
-func InitializeBootstrapper(
-	ctx context.Context,
-	cfgReader *configinfra.Reader,
-	logger *slog.Logger,
-	cfgApp *config.App,
-) (*Bootstrapper, error) {
+func InitializeKernel(
+	_ context.Context,
+	_ *configinfra.Reader,
+	_ *config.Log,
+	_ *slog.Logger,
+	_ *telemetry.Telemetry,
+) (*Kernel, error) {
 	wire.Build(
-		NewBootstrapper,
+		NewKernel,
 		internal.Bindings,
 		cmd.Bindings,
 	)
 
-	return &Bootstrapper{}, nil
+	return &Kernel{}, nil
 }
