@@ -12,31 +12,31 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package application
+package longrun_test
 
 import (
-	"context"
-	"log/slog"
+	"testing"
+	"time"
 
-	"github.com/thumbrise/autosolve/internal/application/issue"
 	"github.com/thumbrise/autosolve/pkg/longrun"
 )
 
-type Scheduler struct {
-	issueWorker *issue.Worker
-	logger      *slog.Logger
-}
+func TestDefaultBackoff(t *testing.T) {
+	b := longrun.DefaultBackoff()
 
-func NewScheduler(issueWorker *issue.Worker, logger *slog.Logger) *Scheduler {
-	return &Scheduler{issueWorker: issueWorker, logger: logger}
-}
+	if b.Initial != 1*time.Second {
+		t.Errorf("Initial = %v, want 1s", b.Initial)
+	}
 
-func (s *Scheduler) Run(ctx context.Context) error {
-	runner := longrun.NewRunner(longrun.RunnerOptions{
-		Logger: s.logger,
-	})
+	if b.Max != 30*time.Second {
+		t.Errorf("Max = %v, want 30s", b.Max)
+	}
 
-	runner.Add(s.issueWorker.Task())
+	if b.Multiplier != 2.0 {
+		t.Errorf("Multiplier = %v, want 2.0", b.Multiplier)
+	}
 
-	return runner.Wait(ctx)
+	if b.MaxRetries != 0 {
+		t.Errorf("MaxRetries = %v, want 0", b.MaxRetries)
+	}
 }

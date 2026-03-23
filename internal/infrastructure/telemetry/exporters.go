@@ -136,7 +136,7 @@ func newLoggerProvider(ctx context.Context, cfg *config.Otel, res *resource.Reso
 //   - "parentbased_always_off"   → ParentBased(NeverSample)
 //   - "parentbased_traceidratio" → ParentBased(TraceIDRatioBased)
 //   - "" or unknown              → ParentBased(AlwaysSample) (OTEL SDK default)
-func newSampler(cfg *config.Otel) sdktrace.Sampler { //nolint:ireturn
+func newSampler(cfg *config.Otel) sdktrace.Sampler {
 	ratio := parseSamplerArg(cfg.Traces.SamplerArg)
 	switch strings.ToLower(cfg.Traces.Sampler) {
 	case "always_on":
@@ -177,7 +177,7 @@ func parseSamplerArg(arg string) float64 {
 //   - "baggage"      → W3C Baggage
 //
 // Default (empty string): tracecontext + baggage.
-func newPropagator(cfg *config.Otel) propagation.TextMapPropagator { //nolint:ireturn
+func newPropagator(cfg *config.Otel) propagation.TextMapPropagator {
 	if cfg.Propagators == "" {
 		return propagation.NewCompositeTextMapPropagator(
 			propagation.TraceContext{},
