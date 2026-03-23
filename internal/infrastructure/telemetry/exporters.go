@@ -177,7 +177,7 @@ func parseSamplerArg(arg string) float64 {
 //   - "baggage"      → W3C Baggage
 //
 // Default (empty string): tracecontext + baggage.
-func newPropagator(cfg *config.Otel) propagation.TextMapPropagator { //nolint:ireturn
+func newPropagator(cfg *config.Otel) propagation.TextMapPropagator {
 	if cfg.Propagators == "" {
 		return propagation.NewCompositeTextMapPropagator(
 			propagation.TraceContext{},
