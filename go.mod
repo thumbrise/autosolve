@@ -9,7 +9,7 @@ require (
 	github.com/google/wire v0.7.0
 	github.com/m-mizutani/masq v0.2.1
 	github.com/samber/slog-multi v1.7.1
-	github.com/spf13/cobra v1.6.1
+	github.com/spf13/cobra v1.10.2
 	github.com/spf13/viper v1.21.0
 	go.opentelemetry.io/contrib/bridges/otelslog v0.17.0
 	go.opentelemetry.io/otel v1.42.0
