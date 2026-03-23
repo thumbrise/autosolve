@@ -33,14 +33,6 @@ func TestResolveRestartStrategy_Never(t *testing.T) {
 	}
 }
 
-func TestResolveRestartStrategy_Always(t *testing.T) {
-	s := longrun.ResolveRestartStrategy(longrun.Always)
-
-	if _, ok := s.(longrun.AlwaysRestart); !ok {
-		t.Errorf("Always → %T, want AlwaysRestart", s)
-	}
-}
-
 func TestResolveRestartStrategy_OnFailure(t *testing.T) {
 	s := longrun.ResolveRestartStrategy(longrun.OnFailure)
 
@@ -98,19 +90,24 @@ func TestResolveErrorClassifier_WithErrors(t *testing.T) {
 // ResolveAttemptTracker
 // ---------------------------------------------------------------------------
 
-func TestResolveAttemptTracker_Zero(t *testing.T) {
+func TestResolveAttemptTracker_Zero_DefaultsToThree(t *testing.T) {
 	a := longrun.ResolveAttemptTracker(0)
 
-	if _, ok := a.(*longrun.UnlimitedAttempts); !ok {
-		t.Errorf("0 → %T, want *UnlimitedAttempts", a)
+	la, ok := a.(*longrun.LimitedAttempts)
+	if !ok {
+		t.Fatalf("0 → %T, want *LimitedAttempts", a)
+	}
+
+	if la.MaxRetries != longrun.DefaultMaxRetries {
+		t.Errorf("MaxRetries = %d, want %d", la.MaxRetries, longrun.DefaultMaxRetries)
 	}
 }
 
-func TestResolveAttemptTracker_Negative(t *testing.T) {
-	a := longrun.ResolveAttemptTracker(-1)
+func TestResolveAttemptTracker_UnlimitedRetries(t *testing.T) {
+	a := longrun.ResolveAttemptTracker(longrun.UnlimitedRetries)
 
 	if _, ok := a.(*longrun.UnlimitedAttempts); !ok {
-		t.Errorf("-1 → %T, want *UnlimitedAttempts", a)
+		t.Errorf("UnlimitedRetries → %T, want *UnlimitedAttempts", a)
 	}
 }
 

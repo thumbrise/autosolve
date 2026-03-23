@@ -84,31 +84,17 @@ func (r *Runner) Wait(ctx context.Context) error {
 		})
 	}
 
-	// Run shutdown in a standalone goroutine so it is not part of the
-	// errgroup.  This avoids a deadlock: grp.Wait() blocks until all
-	// errgroup goroutines finish, and ctxGrp is cancelled only when
-	// Wait returns (or a goroutine errors).  If the shutdown watcher
-	// were inside the errgroup and every task returned nil without a
-	// signal, it would block on <-ctxGrp.Done() forever.
-	shutdownDone := make(chan struct{})
-
-	go func() {
-		defer close(shutdownDone)
-
-		<-ctxGrp.Done()
-		r.logger.InfoContext(ctx, "runner context cancelled, shutting down tasks")
-
-		ctxShutdown, shutdownCancel := context.WithTimeout(context.WithoutCancel(ctx), r.opts.ShutdownTimeout)
-		defer shutdownCancel()
-
-		r.shutdownTasks(ctxShutdown)
-	}()
-
 	r.logger.InfoContext(ctx, "runner waiting for tasks")
 
 	err := grp.Wait()
 
-	<-shutdownDone
+	// All task goroutines have finished — safe to run shutdown hooks.
+	r.logger.InfoContext(ctx, "all tasks stopped, running shutdown hooks")
+
+	ctxShutdown, shutdownCancel := context.WithTimeout(context.WithoutCancel(ctx), r.opts.ShutdownTimeout)
+	defer shutdownCancel()
+
+	r.shutdownTasks(ctxShutdown)
 
 	if err != nil && !errors.Is(err, context.Canceled) {
 		r.logger.ErrorContext(ctx, "runner error", slog.Any("error", err))
