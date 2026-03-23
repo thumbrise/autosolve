@@ -55,12 +55,19 @@ type TaskOptions struct {
 
 // Task is a self-contained unit of work with interval, retry and backoff support.
 // It can be used standalone (via Wait) or managed by a Runner.
+//
+// Task is NOT safe for concurrent use — call Wait from a single goroutine.
+// Runner handles this automatically (one goroutine per task).
 type Task struct {
 	Name     string
 	Work     WorkFunc
 	Shutdown ShutdownFunc
 	Options  TaskOptions
-	logger   *slog.Logger
+
+	restart    RestartStrategy
+	classifier ErrorClassifier
+	attempts   AttemptTracker
+	logger     *slog.Logger
 }
 
 // NewTask creates a Task with the given name, work function and options.
@@ -78,10 +85,13 @@ func NewTask(name string, work WorkFunc, opts TaskOptions) *Task {
 	logger = logger.With(slog.String("task", name))
 
 	return &Task{
-		Name:    name,
-		Work:    work,
-		Options: opts,
-		logger:  logger,
+		Name:       name,
+		Work:       work,
+		Options:    opts,
+		restart:    ResolveRestartStrategy(opts.Restart),
+		classifier: ResolveErrorClassifier(opts.TransientErrors),
+		attempts:   ResolveAttemptTracker(opts.Backoff.MaxRetries),
+		logger:     logger,
 	}
 }
 
@@ -107,25 +117,25 @@ func (t *Task) Wait(ctx context.Context) error {
 }
 
 // runWithPolicy implements the restart loop with backoff.
+// Each decision is delegated to a strategy resolved at construction time,
+// so this method contains no policy-specific branching.
 func (t *Task) runWithPolicy(ctx context.Context) error {
-	attempt := 0
-
 	for {
 		err, hadProgress := t.runLoop(ctx)
 
-		// Success path.
+		// --- success path ---
 		if err == nil {
-			if t.Options.Restart != Always {
-				return nil
-			}
+			t.attempts.Reset()
 
 			if ctx.Err() != nil {
 				return nil //nolint:nilerr // context cancelled, clean shutdown
 			}
 
-			t.logger.InfoContext(ctx, "completed successfully, restarting (policy=Always)")
+			if !t.restart.ShouldRestart(nil) {
+				return nil
+			}
 
-			attempt = 0
+			t.logger.InfoContext(ctx, "completed, restarting")
 
 			continue
 		}
@@ -135,45 +145,29 @@ func (t *Task) runWithPolicy(ctx context.Context) error {
 			return nil
 		}
 
-		// If the loop made progress (at least one successful tick) before
-		// failing, reset the attempt counter so that intermittent transient
-		// errors separated by healthy periods do not accumulate toward
-		// MaxRetries.
-		if hadProgress {
-			attempt = 0
+		// --- failure path ---
+		if retryErr := t.handleFailure(ctx, err, hadProgress); retryErr != nil {
+			return retryErr
 		}
-
-		retry, stopErr := t.shouldRetry(ctx, err, attempt)
-		if !retry {
-			return stopErr
-		}
-
-		if waitErr := t.Options.Backoff.wait(ctx, attempt); waitErr != nil {
-			return nil //nolint:nilerr // context cancelled during backoff
-		}
-
-		attempt++
 	}
 }
 
-// shouldRetry decides whether the error is retryable.
-// Returns (true, nil) to retry, or (false, err) to stop.
-func (t *Task) shouldRetry(ctx context.Context, err error, attempt int) (bool, error) {
-	if t.isPermanent(err) {
-		return false, err
+// handleFailure processes a transient error: classifies it, checks retry budget,
+// waits for backoff.  Returns nil if the caller should retry, or the error to stop.
+func (t *Task) handleFailure(ctx context.Context, err error, hadProgress bool) error {
+	if !t.classifier.IsTransient(err) || !t.restart.ShouldRestart(err) {
+		return err
 	}
 
-	if t.Options.Restart == Never {
-		return false, err
+	if hadProgress {
+		t.attempts.Reset()
 	}
 
-	if t.Options.Backoff.MaxRetries > 0 && attempt >= t.Options.Backoff.MaxRetries {
-		t.logger.ErrorContext(ctx, "max retries reached",
-			slog.Int("attempts", attempt),
-			slog.Any("error", err),
-		)
+	attempt, canRetry := t.attempts.OnFailure()
+	if !canRetry {
+		t.logger.ErrorContext(ctx, "max retries reached", slog.Any("error", err))
 
-		return false, err
+		return err
 	}
 
 	t.logger.InfoContext(ctx, "transient error, retrying",
@@ -182,7 +176,11 @@ func (t *Task) shouldRetry(ctx context.Context, err error, attempt int) (bool, e
 		slog.Any("backoff", t.Options.Backoff.duration(attempt)),
 	)
 
-	return true, nil
+	if waitErr := t.Options.Backoff.wait(ctx, attempt); waitErr != nil {
+		return nil //nolint:nilerr // context cancelled during backoff, next runLoop iteration will handle it
+	}
+
+	return nil
 }
 
 // runLoop runs the ticker loop (interval > 0) or a single invocation (one-shot).
@@ -233,21 +231,4 @@ func (t *Task) runOnce(ctx context.Context) error {
 	}
 
 	return t.Work(ctx)
-}
-
-// isPermanent returns true if the error should not be retried.
-// When TransientErrors is empty, ALL errors are permanent.
-// Otherwise, only errors NOT matching any transient error are permanent.
-func (t *Task) isPermanent(err error) bool {
-	if len(t.Options.TransientErrors) == 0 {
-		return true
-	}
-
-	for _, te := range t.Options.TransientErrors {
-		if errors.Is(err, te) {
-			return false
-		}
-	}
-
-	return true
 }
