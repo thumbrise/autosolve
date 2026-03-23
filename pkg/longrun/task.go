@@ -111,7 +111,7 @@ func (t *Task) runWithPolicy(ctx context.Context) error {
 	attempt := 0
 
 	for {
-		err := t.runLoop(ctx)
+		err, hadProgress := t.runLoop(ctx)
 
 		// Success path.
 		if err == nil {
@@ -133,6 +133,14 @@ func (t *Task) runWithPolicy(ctx context.Context) error {
 		// Context cancelled — not a task error.
 		if errors.Is(err, context.Canceled) {
 			return nil
+		}
+
+		// If the loop made progress (at least one successful tick) before
+		// failing, reset the attempt counter so that intermittent transient
+		// errors separated by healthy periods do not accumulate toward
+		// MaxRetries.
+		if hadProgress {
+			attempt = 0
 		}
 
 		retry, stopErr := t.shouldRetry(ctx, err, attempt)
@@ -178,16 +186,22 @@ func (t *Task) shouldRetry(ctx context.Context, err error, attempt int) (bool, e
 }
 
 // runLoop runs the ticker loop (interval > 0) or a single invocation (one-shot).
-func (t *Task) runLoop(ctx context.Context) error {
+// The second return value (hadProgress) is true when at least one invocation
+// of the work function succeeded before the loop returned an error.
+func (t *Task) runLoop(ctx context.Context) (error, bool) {
 	if t.Options.Interval <= 0 {
-		return t.runOnce(ctx)
+		return t.runOnce(ctx), false
 	}
 
 	// Interval mode.
+	hadProgress := false
+
 	if !t.Options.SkipInitialRun {
 		if err := t.runOnce(ctx); err != nil {
-			return err
+			return err, false
 		}
+
+		hadProgress = true
 	}
 
 	ticker := time.NewTicker(t.Options.Interval)
@@ -196,11 +210,13 @@ func (t *Task) runLoop(ctx context.Context) error {
 	for {
 		select {
 		case <-ctx.Done():
-			return nil
+			return nil, hadProgress
 		case <-ticker.C:
 			if err := t.runOnce(ctx); err != nil {
-				return err
+				return err, hadProgress
 			}
+
+			hadProgress = true
 		}
 	}
 }
