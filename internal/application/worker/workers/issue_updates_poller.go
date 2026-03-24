@@ -16,10 +16,10 @@ package workers
 
 import (
 	"log/slog"
-	"net"
 
 	"github.com/thumbrise/autosolve/internal/config"
 	"github.com/thumbrise/autosolve/internal/domain/issue"
+	"github.com/thumbrise/autosolve/pkg/httperr"
 	"github.com/thumbrise/autosolve/pkg/longrun"
 )
 
@@ -51,8 +51,6 @@ func (iup *IssueUpdatesPoller) Task() *longrun.Task {
 }
 
 func (iup *IssueUpdatesPoller) transients() []error {
-	// TODO: specify work specific transients
-	return []error{
-		(*net.OpError)(nil),
-	}
+	// only httperr for now, nothing more to retry
+	return httperr.TransientErrors()
 }

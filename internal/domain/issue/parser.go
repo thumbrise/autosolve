@@ -33,10 +33,9 @@ import (
 // Sentinel errors for classifying parser failures.
 // Callers can use these with errors.Is to decide retry strategy.
 var (
-	ErrFetchIssues     = errors.New("fetch issues")
-	ErrStoreIssues     = errors.New("store issues")
-	ErrGithubRateLimit = errors.New("githubinfra rate limit")
-	ErrReadLastUpdate  = errors.New("read last update")
+	ErrFetchIssues    = errors.New("fetch issues")
+	ErrStoreIssues    = errors.New("store issues")
+	ErrReadLastUpdate = errors.New("read last update")
 )
 
 type Parser struct {
@@ -55,24 +54,25 @@ func (p *Parser) Run(ctx context.Context) error {
 
 	lastUpdate, err := p.lastUpdate(ctx)
 	if err != nil {
-		// TODO: add transient info
-		return fmt.Errorf("%w: fetch last update: %w", ErrReadLastUpdate, err)
+		// SQLLite GORM 1 connection pool. Always permanent
+		return fmt.Errorf("%w: %w", ErrReadLastUpdate, err)
 	}
 
 	issues, _, err := p.githubClient.GetMostUpdatedIssues(ctx, 50, lastUpdate)
 	if err != nil {
-		// TODO: add pause logic until Rate Limit resets
-		//  add log warn for exhaust
-		// var rlErr *github.RateLimitError
-		// if errors.As(err, &rlErr) {
-		//}
+		if p.adaptRateLimit(ctx, err) {
+			// rate limit was caught
+			// just waiting next tick
+			return nil
+		}
+
 		return fmt.Errorf("%w: list by repo: %w", ErrFetchIssues, err)
 	}
 
 	if len(issues) == 0 {
-		// TODO: adaptive polling — increase interval when no new issues found,
-		//  reset to base interval on data. Reduces GitHub API load during quiet periods.
-		//  add function in longrun for backoff
+		// noop for now
+		p.adaptPollingInterval(ctx)
+
 		p.logger.InfoContext(ctx, "no new issues found")
 
 		return nil
@@ -82,6 +82,7 @@ func (p *Parser) Run(ctx context.Context) error {
 
 	err = p.store(ctx, issues)
 	if err != nil {
+		// SQLLite GORM 1 connection pool. Always permanent
 		return fmt.Errorf("%w: %w", ErrStoreIssues, err)
 	}
 
@@ -159,4 +160,49 @@ func (p *Parser) lastUpdate(ctx context.Context) (time.Time, error) {
 	}
 
 	return res.Add(1 * time.Second), nil
+}
+
+// adaptRateLimit pauses execution until the rate limit resets.
+// Called when the GitHub API returns a rate limit error.
+// The original error is available in the chain via errors.As
+// for accessing reset time and remaining quota.
+//
+// If err is *github.RateLimitError or *github.AbuseRateLimitError then returns true, otherwise returns false and you should handle original error
+func (p *Parser) adaptRateLimit(ctx context.Context, err error) bool {
+	var (
+		wait     time.Duration
+		rlErr    *github.RateLimitError
+		abuseErr *github.AbuseRateLimitError
+	)
+
+	switch {
+	case errors.As(err, &rlErr):
+		wait = time.Until(rlErr.Rate.Reset.Time)
+	case errors.As(err, &abuseErr) && abuseErr.RetryAfter != nil:
+		wait = *abuseErr.RetryAfter
+	default:
+		return false
+	}
+
+	p.logger.WarnContext(ctx, "rate limit hit, pausing",
+		slog.Duration("wait", wait),
+	)
+
+	timer := time.NewTimer(wait)
+	defer timer.Stop()
+
+	select {
+	case <-ctx.Done():
+	case <-timer.C:
+	}
+
+	return true
+}
+
+// adaptPollingInterval adjusts the polling frequency based on data availability.
+// Called when a successful fetch returns zero issues, indicating a quiet period.
+// Reduces GitHub API load by increasing the interval between polls.
+func (p *Parser) adaptPollingInterval(_ context.Context) {
+	//nolint:godox // noop: will be implemented when adaptive polling is prioritized in https://github.com/thumbrise/autosolve/issues/53
+	// TODO: implement exponential backoff on empty responses, reset to base interval when data appears.
 }
