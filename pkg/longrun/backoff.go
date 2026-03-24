@@ -31,13 +31,35 @@ const (
 )
 
 // BackoffConfig controls exponential backoff between retry attempts.
+//
+// Formula: delay = Initial * Multiplier^attempt
+//
+// Example with Initial=1s, Multiplier=2.0, Max=30s:
+//
+//	attempt 0: 1s * 2^0 = 1s
+//	attempt 1: 1s * 2^1 = 2s
+//	attempt 2: 1s * 2^2 = 4s
+//	attempt 3: 1s * 2^3 = 8s
+//	...
+//	attempt 5: 1s * 2^5 = 32s → capped at 30s
 type BackoffConfig struct {
-	Initial    time.Duration
-	Max        time.Duration
+	// Initial is the delay before the first retry (attempt 0).
+	// Must be > 0. Validated at Task construction time.
+	Initial time.Duration
+	// Max caps the computed delay. 0 means no cap (use with caution —
+	// combined with UnlimitedRetries, delay grows until overflow).
+	Max time.Duration
+	// Multiplier scales the delay on each consecutive attempt.
+	// Must be > 0. Validated at Task construction time.
+	// 1.0 = constant delay, 2.0 = classic exponential, 1.5 = gentle growth.
 	Multiplier float64
 }
 
 // DefaultBackoff returns a sensible default backoff configuration.
+//
+// Configured as Initial=1s, Max=30s, Multiplier=2.0
+//
+// Perfect for 5 retries
 func DefaultBackoff() BackoffConfig {
 	return BackoffConfig{
 		Initial:    1 * time.Second,
