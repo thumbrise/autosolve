@@ -297,11 +297,18 @@ func (t *Task) runOnce(ctx context.Context) error {
 		t.logger.DebugContext(ctx, "timeout applied", slog.Any("timeout", t.timeout))
 	}
 
+	t.logger.DebugContext(ctx, "iteration start", slog.Any("interval", t.interval))
+
+	startTime := time.Now()
+
 	err := t.work(ctx)
 	if err != nil {
 		span.RecordError(err)
 		span.SetStatus(codes.Error, err.Error())
 	}
+
+	duration := time.Since(startTime)
+	t.logger.DebugContext(ctx, "iteration finished", slog.Any("duration", duration))
 
 	return err
 }
