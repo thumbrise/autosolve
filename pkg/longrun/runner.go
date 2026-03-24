@@ -29,8 +29,11 @@ type RunnerOptions struct {
 	Logger          *slog.Logger  // nil = slog.Default()
 }
 
-// Runner orchestrates N tasks.  When any task returns a permanent error the
+// Runner orchestrates N tasks. When any task returns a permanent error the
 // runner cancels all remaining tasks and performs graceful shutdown.
+//
+// Runner does NOT handle OS signals — pass a cancellable context
+// (e.g. via signal.NotifyContext).
 type Runner struct {
 	tasks  []*Task
 	opts   RunnerOptions
@@ -62,13 +65,14 @@ func (r *Runner) Add(task *Task) {
 	r.tasks = append(r.tasks, task)
 
 	r.logger.Debug("runner: task added",
-		slog.String("task", task.Name),
+		slog.String("task", task.name),
 	)
 }
 
 // Wait starts all tasks concurrently and blocks until they all finish.
 // When any task returns an error, all other tasks are cancelled via ctx.
-// After cancellation, Shutdown is called on every task that has one.
+// After all goroutines finish, shutdown hooks are called in LIFO order
+// (reverse of Add).
 // The ctx passed in controls the lifetime — the runner does NOT listen for
 // OS signals; use signal.NotifyContext in the caller.
 func (r *Runner) Wait(ctx context.Context) error {
@@ -107,15 +111,17 @@ func (r *Runner) Wait(ctx context.Context) error {
 	return nil
 }
 
+// shutdownTasks calls shutdown hooks in LIFO order (reverse of Add).
 func (r *Runner) shutdownTasks(ctx context.Context) {
-	for _, task := range r.tasks {
-		if task.Shutdown == nil {
+	for i := len(r.tasks) - 1; i >= 0; i-- {
+		task := r.tasks[i]
+		if task.shutdown == nil {
 			continue
 		}
 
-		logger := r.logger.With(slog.String("task", task.Name))
+		logger := r.logger.With(slog.String("task", task.name))
 
-		err := task.Shutdown(ctx)
+		err := task.shutdown(ctx)
 		if err != nil {
 			logger.ErrorContext(ctx, "failed to shutdown task",
 				slog.Any("error", err),

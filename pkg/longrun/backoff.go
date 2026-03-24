@@ -35,25 +35,19 @@ type BackoffConfig struct {
 	Initial    time.Duration
 	Max        time.Duration
 	Multiplier float64
-	// MaxRetries limits consecutive retry attempts.
-	//   0 (zero-value) → DefaultMaxRetries (3).
-	//  -1 (UnlimitedRetries) → no limit.
-	//  >0 → exact limit.
-	MaxRetries int
 }
 
 // DefaultBackoff returns a sensible default backoff configuration.
-// MaxRetries is 0, which resolves to DefaultMaxRetries (3).
 func DefaultBackoff() BackoffConfig {
 	return BackoffConfig{
 		Initial:    1 * time.Second,
 		Max:        30 * time.Second,
 		Multiplier: 2.0,
-		MaxRetries: 0,
 	}
 }
 
-func (b *BackoffConfig) duration(attempt int) time.Duration {
+// Duration returns the backoff duration for the given 0-based attempt index.
+func (b *BackoffConfig) Duration(attempt int) time.Duration {
 	d := float64(b.Initial) * math.Pow(b.Multiplier, float64(attempt))
 	if b.Max > 0 && d > float64(b.Max) {
 		d = float64(b.Max)
@@ -62,8 +56,9 @@ func (b *BackoffConfig) duration(attempt int) time.Duration {
 	return time.Duration(d)
 }
 
-func (b *BackoffConfig) wait(ctx context.Context, attempt int) error {
-	timer := time.NewTimer(b.duration(attempt))
+// Wait blocks for the backoff duration of the given attempt, or until ctx is cancelled.
+func (b *BackoffConfig) Wait(ctx context.Context, attempt int) error {
+	timer := time.NewTimer(b.Duration(attempt))
 	defer timer.Stop()
 
 	select {

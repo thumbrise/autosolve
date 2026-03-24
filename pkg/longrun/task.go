@@ -23,90 +23,89 @@ import (
 // WorkFunc is the function that performs the actual work of a task.
 type WorkFunc func(ctx context.Context) error
 
-// ShutdownFunc is called during graceful shutdown.
-type ShutdownFunc func(ctx context.Context) error
-
-// RestartPolicy determines when a task should be restarted after completion.
-type RestartPolicy int
-
-const (
-	Never     RestartPolicy = iota // do not restart (default)
-	OnFailure                      // restart only on failure
-)
-
-// TaskOptions configures the behaviour of a Task.
-//
-// The two axes — Interval and Restart — form a simple state machine:
-//
-//	Interval=0  + Restart=Never     → one-shot: run once, stop.
-//	Interval=0  + Restart=OnFailure → one-shot with retries: retry transient errors, stop on success or permanent error.
-//	Interval>0  + Restart=Never     → periodic: ticker loop, stop on first error.
-//	Interval>0  + Restart=OnFailure → periodic with retries: ticker loop, restart loop on transient errors.
-//
-// By default all errors are permanent — a single failure stops the task.
-// To enable retries, set Restart to OnFailure and list the
-// errors that should be retried in TransientErrors (whitelist).
-// Only errors matching via errors.Is are considered transient;
-// everything else remains permanent and stops the task immediately.
-type TaskOptions struct {
-	Interval        time.Duration // 0 = one-shot
-	SkipInitialRun  bool          // default false = run immediately
-	Restart         RestartPolicy // default Never
-	Backoff         BackoffConfig
-	Timeout         time.Duration // per-invocation, 0 = none
-	TransientErrors []error       // whitelist; empty = all errors are permanent
-	Logger          *slog.Logger  // nil = slog.Default()
-}
-
 // Task is a self-contained unit of work with interval, retry and backoff support.
 // It can be used standalone (via Wait) or managed by a Runner.
 //
 // Task is NOT safe for concurrent use — call Wait from a single goroutine.
 // Runner handles this automatically (one goroutine per task).
 type Task struct {
-	Name     string
-	Work     WorkFunc
-	Shutdown ShutdownFunc
-	Options  TaskOptions
-
-	restart    RestartStrategy
-	classifier ErrorClassifier
-	attempts   AttemptTracker
-	logger     *slog.Logger
+	name     string
+	work     WorkFunc
+	shutdown ShutdownFunc
+	interval time.Duration
+	timeout  time.Duration
+	delay    time.Duration
+	rules    []ruleState
+	logger   *slog.Logger
 }
 
-// NewTask creates a Task with the given name, work function and options.
+// NewOneShotTask creates a task that executes once.
+// If rules is nil — no retries, any error is fatal.
+// If rules is provided — transient errors are retried per their configuration.
+//
 // Panics if work is nil.
-func NewTask(name string, work WorkFunc, opts TaskOptions) *Task {
-	if work == nil {
-		panic("longrun.NewTask: work function is nil")
+// Panics if any rule has nil Err, unsupported Err type, or Backoff.Initial <= 0.
+func NewOneShotTask(name string, work WorkFunc, rules []TransientRule, opts ...Option) *Task {
+	return newTask(name, 0, work, rules, opts)
+}
+
+// NewIntervalTask creates a task that runs on a ticker loop.
+// If rules is nil — any error kills the task.
+// If rules is provided — transient errors are retried per their configuration,
+// permanent errors (no matching rule) kill the task.
+//
+// Panics if work is nil or interval <= 0.
+// Panics if any rule has nil Err, unsupported Err type, or Backoff.Initial <= 0.
+func NewIntervalTask(name string, interval time.Duration, work WorkFunc, rules []TransientRule, opts ...Option) *Task {
+	if interval <= 0 {
+		panic("longrun.NewIntervalTask: interval must be > 0")
 	}
 
-	logger := opts.Logger
+	return newTask(name, interval, work, rules, opts)
+}
+
+func newTask(name string, interval time.Duration, work WorkFunc, rules []TransientRule, opts []Option) *Task {
+	if work == nil {
+		panic("longrun: work function must not be nil")
+	}
+
+	cfg := &taskConfig{}
+	for _, o := range opts {
+		o(cfg)
+	}
+
+	logger := cfg.logger
 	if logger == nil {
 		logger = slog.Default()
 	}
 
 	logger = logger.With(slog.String("task", name))
 
+	var ruleStates []ruleState
+	if len(rules) > 0 {
+		ruleStates = buildRuleStates(rules)
+	}
+
 	return &Task{
-		Name:       name,
-		Work:       work,
-		Options:    opts,
-		restart:    ResolveRestartStrategy(opts.Restart),
-		classifier: ResolveErrorClassifier(opts.TransientErrors),
-		attempts:   ResolveAttemptTracker(opts.Backoff.MaxRetries),
-		logger:     logger,
+		name:     name,
+		work:     work,
+		shutdown: cfg.shutdown,
+		interval: interval,
+		timeout:  cfg.timeout,
+		delay:    cfg.delay,
+		rules:    ruleStates,
+		logger:   logger,
 	}
 }
 
-// Wait runs the task to completion, respecting the configured restart policy,
-// backoff and interval.  It blocks until the task finishes or ctx is cancelled.
+// Wait runs the task to completion, respecting the configured retry policy,
+// backoff and interval. It blocks until the task finishes or ctx is cancelled.
 func (t *Task) Wait(ctx context.Context) error {
 	t.logger.InfoContext(ctx, "started",
-		slog.Any("interval", t.Options.Interval),
-		slog.Any("restart", t.Options.Restart),
-		slog.Any("timeout", t.Options.Timeout),
+		slog.Any("interval", t.interval),
+		slog.Any("timeout", t.timeout),
+		slog.Any("delay", t.delay),
+		slog.Int("rules", len(t.rules)),
 	)
 
 	err := t.runWithPolicy(ctx)
@@ -122,22 +121,39 @@ func (t *Task) Wait(ctx context.Context) error {
 }
 
 // runWithPolicy implements the restart loop with backoff.
-// Each decision is delegated to a strategy resolved at construction time,
-// so this method contains no policy-specific branching.
+//
+//	Task.Wait(ctx)
+//	  └→ runWithPolicy (restart loop + backoff)
+//	       └→ runLoop (ticker or one-shot)
+//	            └→ runOnce (single invocation ± timeout)
 func (t *Task) runWithPolicy(ctx context.Context) error {
+	// Delay before first execution (if configured). Runs once, not on every retry.
+	if t.delay > 0 {
+		t.logger.DebugContext(ctx, "delaying first execution", slog.Any("delay", t.delay))
+
+		timer := time.NewTimer(t.delay)
+		defer timer.Stop()
+
+		select {
+		case <-ctx.Done():
+			return nil //nolint:nilerr // context cancelled during delay
+		case <-timer.C:
+		}
+	}
+
 	for {
 		err, hadProgress := t.runLoop(ctx)
 
 		// --- success path ---
 		if err == nil {
-			t.attempts.Reset()
+			t.resetAllRules()
 
 			return nil
 		}
 
 		// Context done — not a task error.
 		if ctx.Err() != nil {
-			return nil //nolint:nilerr //err is non-nil here but context termination is not a task failure
+			return nil //nolint:nilerr // context termination is not a task failure
 		}
 
 		// --- failure path ---
@@ -147,57 +163,78 @@ func (t *Task) runWithPolicy(ctx context.Context) error {
 	}
 }
 
-// handleFailure processes a transient error: classifies it, checks retry budget,
-// waits for backoff.  Returns nil if the caller should retry, or the error to stop.
+// handleFailure processes an error: finds a matching rule, checks retry budget,
+// waits for backoff. Returns nil if the caller should retry, or the error to stop.
 func (t *Task) handleFailure(ctx context.Context, err error, hadProgress bool) error {
-	if !t.classifier.IsTransient(err) || !t.restart.ShouldRestart(err) {
+	rs := t.findMatchingRule(err)
+	if rs == nil {
+		// No matching rule → permanent error.
 		return err
 	}
 
 	if hadProgress {
-		t.attempts.Reset()
+		t.resetAllRules()
 	}
 
-	attempt, canRetry := t.attempts.OnFailure()
+	attempt, canRetry := rs.tracker.OnFailure()
 	if !canRetry {
-		t.logger.ErrorContext(ctx, "max retries reached", slog.Any("error", err))
+		t.logger.ErrorContext(ctx, "max retries reached",
+			slog.Any("error", err),
+			slog.Int("max_retries", rs.tracker.Max()),
+		)
 
 		return err
 	}
 
+	backoffDuration := rs.rule.Backoff.Duration(attempt)
+
 	t.logger.InfoContext(ctx, "transient error, retrying",
 		slog.Int("attempt", attempt+1),
 		slog.Any("error", err),
-		slog.Any("backoff", t.Options.Backoff.duration(attempt)),
+		slog.Any("backoff", backoffDuration),
 	)
 
-	if waitErr := t.Options.Backoff.wait(ctx, attempt); waitErr != nil {
-		return nil //nolint:nilerr // context cancelled during backoff, next runLoop iteration will handle it
+	if waitErr := rs.rule.Backoff.Wait(ctx, attempt); waitErr != nil {
+		return nil //nolint:nilerr // context cancelled during backoff, next iteration handles it
 	}
 
 	return nil
+}
+
+func (t *Task) findMatchingRule(err error) *ruleState {
+	for i := range t.rules {
+		if t.rules[i].matcher.Match(err) {
+			return &t.rules[i]
+		}
+	}
+
+	return nil
+}
+
+func (t *Task) resetAllRules() {
+	for i := range t.rules {
+		t.rules[i].tracker.Reset()
+	}
 }
 
 // runLoop runs the ticker loop (interval > 0) or a single invocation (one-shot).
 // The second return value (hadProgress) is true when at least one invocation
 // of the work function succeeded before the loop returned an error.
 func (t *Task) runLoop(ctx context.Context) (error, bool) {
-	if t.Options.Interval <= 0 {
+	if t.interval <= 0 {
 		return t.runOnce(ctx), false
 	}
 
-	// Interval mode.
+	// Interval mode: run immediately, then on every tick.
 	hadProgress := false
 
-	if !t.Options.SkipInitialRun {
-		if err := t.runOnce(ctx); err != nil {
-			return err, false
-		}
-
-		hadProgress = true
+	if err := t.runOnce(ctx); err != nil {
+		return err, false
 	}
 
-	ticker := time.NewTicker(t.Options.Interval)
+	hadProgress = true
+
+	ticker := time.NewTicker(t.interval)
 	defer ticker.Stop()
 
 	for {
@@ -216,14 +253,14 @@ func (t *Task) runLoop(ctx context.Context) (error, bool) {
 
 // runOnce executes the work function once, optionally with a per-invocation timeout.
 func (t *Task) runOnce(ctx context.Context) error {
-	if t.Options.Timeout > 0 {
+	if t.timeout > 0 {
 		var cancel context.CancelFunc
 
-		ctx, cancel = context.WithTimeout(ctx, t.Options.Timeout)
+		ctx, cancel = context.WithTimeout(ctx, t.timeout)
 		defer cancel()
 
-		t.logger.DebugContext(ctx, "timeout applied", slog.Any("timeout", t.Options.Timeout))
+		t.logger.DebugContext(ctx, "timeout applied", slog.Any("timeout", t.timeout))
 	}
 
-	return t.Work(ctx)
+	return t.work(ctx)
 }
