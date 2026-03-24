@@ -46,6 +46,33 @@ type TransientRule struct {
 	Backoff BackoffConfig
 }
 
+// TransientGroup creates N rules with identical MaxRetries and BackoffConfig.
+// Each rule gets its own independent retry budget — failures of one error
+// do not count toward the budget of another.
+//
+// Each error in errs must be a valid Err value (sentinel or typed nil pointer).
+// See TransientRule.Err for details.
+//
+// Example:
+//
+//	longrun.TransientGroup(longrun.UnlimitedRetries, longrun.DefaultBackoff(),
+//	    (*net.OpError)(nil),
+//	    ErrFetchIssues,
+//	    ErrStoreIssues,
+//	)
+func TransientGroup(maxRetries int, backoff BackoffConfig, errs ...error) []TransientRule {
+	rules := make([]TransientRule, len(errs))
+	for i, err := range errs {
+		rules[i] = TransientRule{
+			Err:        err,
+			MaxRetries: maxRetries,
+			Backoff:    backoff,
+		}
+	}
+
+	return rules
+}
+
 // ruleState is the internal, mutable representation of a TransientRule.
 // TransientRule itself is a pure config value from the caller.
 type ruleState struct {
