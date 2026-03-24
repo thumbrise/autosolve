@@ -45,15 +45,15 @@ func NewRuleTracker(maxRetries int) *RuleTracker {
 //	2nd call: attempt=1, ok=true
 //	3rd call: attempt=2, ok=true
 //	4th call: attempt=3, ok=false (budget exhausted)
-func (rt *RuleTracker) OnFailure() (attempt int, ok bool) {
+func (rt *RuleTracker) OnFailure() (int, bool) {
 	if rt.max != UnlimitedRetries && rt.attempt >= rt.max {
 		return rt.attempt, false
 	}
 
-	attempt = rt.attempt
+	a := rt.attempt
 	rt.attempt++
 
-	return attempt, true
+	return a, true
 }
 
 // Reset sets the attempt counter back to zero (e.g. after healthy progress).

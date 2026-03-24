@@ -282,6 +282,7 @@ func TestOneShotTask_WithDelay(t *testing.T) {
 
 func TestOneShotTask_WithDelay_NotReappliedOnRetry(t *testing.T) {
 	delay := 50 * time.Millisecond
+
 	var calls int32
 
 	task := longrun.NewOneShotTask("test", func(context.Context) error {

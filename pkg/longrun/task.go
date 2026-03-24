@@ -43,6 +43,10 @@ type Task struct {
 // If rules is nil — no retries, any error is fatal.
 // If rules is provided — transient errors are retried per their configuration.
 //
+// Each TransientRule binds an error to its own retry budget and backoff curve.
+// TransientRule.MaxRetries limits consecutive failures for that rule — the budget
+// is never reset mid-execution for one-shot tasks.
+//
 // Panics if work is nil.
 // Panics if any rule has nil Err, unsupported Err type, or Backoff.Initial <= 0.
 func NewOneShotTask(name string, work WorkFunc, rules []TransientRule, opts ...Option) *Task {
@@ -53,6 +57,11 @@ func NewOneShotTask(name string, work WorkFunc, rules []TransientRule, opts ...O
 // If rules is nil — any error kills the task.
 // If rules is provided — transient errors are retried per their configuration,
 // permanent errors (no matching rule) kill the task.
+//
+// Each TransientRule binds an error to its own retry budget and backoff curve.
+// TransientRule.MaxRetries limits consecutive failures for that rule. When a tick
+// completes successfully, all rule trackers reset — so intermittent failures
+// separated by successful ticks never accumulate toward MaxRetries.
 //
 // Panics if work is nil or interval <= 0.
 // Panics if any rule has nil Err, unsupported Err type, or Backoff.Initial <= 0.
@@ -82,7 +91,17 @@ func newTask(name string, interval time.Duration, work WorkFunc, rules []Transie
 	logger = logger.With(slog.String("task", name))
 
 	var ruleStates []ruleState
+
 	if len(rules) > 0 {
+		for _, r := range rules {
+			if r.MaxRetries == 0 {
+				logger.Warn("TransientRule.MaxRetries is 0 (zero-value), using DefaultMaxRetries",
+					slog.Int("resolved", DefaultMaxRetries),
+					slog.Any("rule_err", r.Err),
+				)
+			}
+		}
+
 		ruleStates = buildRuleStates(rules)
 	}
 
@@ -136,7 +155,7 @@ func (t *Task) runWithPolicy(ctx context.Context) error {
 
 		select {
 		case <-ctx.Done():
-			return nil //nolint:nilerr // context cancelled during delay
+			return nil
 		case <-timer.C:
 		}
 	}
@@ -153,7 +172,7 @@ func (t *Task) runWithPolicy(ctx context.Context) error {
 
 		// Context done — not a task error.
 		if ctx.Err() != nil {
-			return nil //nolint:nilerr // context termination is not a task failure
+			return nil
 		}
 
 		// --- failure path ---
@@ -165,6 +184,12 @@ func (t *Task) runWithPolicy(ctx context.Context) error {
 
 // handleFailure processes an error: finds a matching rule, checks retry budget,
 // waits for backoff. Returns nil if the caller should retry, or the error to stop.
+//
+// Retry budget semantics: MaxRetries limits consecutive failures for a given rule.
+// When an interval task completes a successful tick (hadProgress=true), all rule
+// trackers reset to zero — so intermittent failures separated by successful ticks
+// never accumulate toward MaxRetries. For one-shot tasks hadProgress is always false,
+// so the budget is never reset mid-execution.
 func (t *Task) handleFailure(ctx context.Context, err error, hadProgress bool) error {
 	rs := t.findMatchingRule(err)
 	if rs == nil {
@@ -220,19 +245,23 @@ func (t *Task) resetAllRules() {
 // runLoop runs the ticker loop (interval > 0) or a single invocation (one-shot).
 // The second return value (hadProgress) is true when at least one invocation
 // of the work function succeeded before the loop returned an error.
+//
+// Interval mode always runs work immediately, then on every tick. When a transient
+// error triggers a retry via handleFailure, runWithPolicy re-enters runLoop from
+// scratch: work runs immediately again, then a new ticker starts. This means the
+// ticker resets on each retry — the interval between the immediate retry and the
+// next tick is a full interval period, not the remainder of the previous one.
 func (t *Task) runLoop(ctx context.Context) (error, bool) {
 	if t.interval <= 0 {
 		return t.runOnce(ctx), false
 	}
 
 	// Interval mode: run immediately, then on every tick.
-	hadProgress := false
-
 	if err := t.runOnce(ctx); err != nil {
 		return err, false
 	}
 
-	hadProgress = true
+	hadProgress := true
 
 	ticker := time.NewTicker(t.interval)
 	defer ticker.Stop()
