@@ -46,7 +46,7 @@ How to update:
 ## Context
 
 - **Always pass `context.Context`** — first parameter, always. No storing contexts in structs.
-- **Always use `...Context()` variants for logging** — `logger.InfoContext(ctx, ...)`, never `logger.Info(...)`. Context carries trace IDs, request scoping, cancellation — losing it means losing observability.
+- **Always use `...Context()` variants for logging** — `logger.InfoContext(ctx, ...)`, never `logger.Info(...)`. Context carries trace IDs, request scoping, cancellation — losing it means losing observability. Exception: constructors and setup-phase code that run before any request context exists — there is nothing to trace.
 - **Never create contexts from scratch** — no `context.Background()` mid-call-chain, ever. Always derive from the parent.
 - **Respect parent cancellation** — derive via `context.WithTimeout`, `context.WithCancel`, etc.
 - **Graceful shutdown exception** — when cleanup must outlive the parent's cancellation, use `context.WithoutCancel(parent)` + own timeout. Still derived from parent, but cancellation-independent.
