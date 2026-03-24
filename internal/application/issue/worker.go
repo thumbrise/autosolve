@@ -35,16 +35,10 @@ func NewWorker(cfg *config.Github, logger *slog.Logger, parser *Parser) *Worker 
 
 // Task returns a longrun.Task that polls issues on the configured interval.
 func (w *Worker) Task() *longrun.Task {
-	backoff := longrun.DefaultBackoff()
-	backoff.MaxRetries = longrun.UnlimitedRetries
-
-	return longrun.NewTask("polling issues", w.poll, longrun.TaskOptions{
-		Interval:        w.cfg.Issues.ParseInterval,
-		Restart:         longrun.OnFailure,
-		Backoff:         backoff,
-		TransientErrors: []error{ErrFetchIssues, ErrStoreIssues},
-		Logger:          w.logger,
-	})
+	return longrun.NewIntervalTask("polling issues", w.cfg.Issues.ParseInterval, w.poll, []longrun.TransientRule{
+		{Err: ErrFetchIssues, MaxRetries: longrun.UnlimitedRetries, Backoff: longrun.DefaultBackoff()},
+		{Err: ErrStoreIssues, MaxRetries: longrun.UnlimitedRetries, Backoff: longrun.DefaultBackoff()},
+	}, longrun.WithLogger(w.logger))
 }
 
 func (w *Worker) poll(ctx context.Context) error {
