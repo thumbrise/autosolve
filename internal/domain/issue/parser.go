@@ -180,6 +180,9 @@ func (p *Parser) adaptRateLimit(ctx context.Context, err error) bool {
 		wait = time.Until(rlErr.Rate.Reset.Time)
 	case errors.As(err, &abuseErr) && abuseErr.RetryAfter != nil:
 		wait = *abuseErr.RetryAfter
+	case errors.As(err, &abuseErr):
+		p.logger.WarnContext(ctx, "abuse rate limit hit without RetryAfter header, falling back to exponential backoff")
+		return false
 	default:
 		return false
 	}
