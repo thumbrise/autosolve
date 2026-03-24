@@ -87,9 +87,11 @@ Rules:
 
 When commit history gets messy during development (mixed concerns, WIP noise, interleaved topics), use git reset to restructure it before merge:
 
-1. `git reset --soft` to the branch base — all changes become staged.
-2. Re-commit in clean, topic-separated sequence — each commit is atomic and compilable.
-3. `git push --force-with-lease` — safe force push that won't overwrite others' work.
+1. `git reset --soft <base>` — all changes become staged.
+2. `git reset HEAD .` — unstage everything into the working tree.
+3. `git add` files per topic, commit in clean sequence — each commit is atomic and compilable.
+4. `git push --force-with-lease` — safe force push that won't overwrite others' work.
+   **Important:** step 2 is required. After `--soft` reset all changes are staged. Without unstaging first, the first `git add` + `git commit` will capture everything — subsequent commits will have nothing left.
 
 This produces a linear history grouped by topic, not by chronological order of development. **Only do this after the review is approved and all work is done.** Force pushes invalidate existing review comments and make incremental review impossible. Clean up history as the very last step before merge.
 
