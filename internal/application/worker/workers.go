@@ -12,33 +12,21 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package application
+package worker
 
 import (
-	"context"
-	"log/slog"
-
-	"github.com/thumbrise/autosolve/internal/application/worker"
+	"github.com/thumbrise/autosolve/internal/application/worker/workers"
 	"github.com/thumbrise/autosolve/pkg/longrun"
 )
 
-type Scheduler struct {
-	workers []worker.Worker
-	logger  *slog.Logger
+type Worker interface {
+	Task() *longrun.Task
 }
 
-func NewScheduler(issueWorker []worker.Worker, logger *slog.Logger) *Scheduler {
-	return &Scheduler{workers: issueWorker, logger: logger}
-}
-
-func (s *Scheduler) Run(ctx context.Context) error {
-	runner := longrun.NewRunner(longrun.RunnerOptions{
-		Logger: s.logger,
-	})
-
-	for _, w := range s.workers {
-		runner.Add(w.Task())
+func NewWorkers(
+	issueUpdatesPoller *workers.IssueUpdatesPoller,
+) []Worker {
+	return []Worker{
+		issueUpdatesPoller,
 	}
-
-	return runner.Wait(ctx)
 }

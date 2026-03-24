@@ -11,8 +11,10 @@ import (
 	"github.com/thumbrise/autosolve/cmd"
 	"github.com/thumbrise/autosolve/cmd/cmds"
 	"github.com/thumbrise/autosolve/internal/application"
-	"github.com/thumbrise/autosolve/internal/application/issue"
+	"github.com/thumbrise/autosolve/internal/application/worker"
+	"github.com/thumbrise/autosolve/internal/application/worker/workers"
 	config2 "github.com/thumbrise/autosolve/internal/config"
+	"github.com/thumbrise/autosolve/internal/domain/issue"
 	"github.com/thumbrise/autosolve/internal/infrastructure/config"
 	"github.com/thumbrise/autosolve/internal/infrastructure/dal"
 	"github.com/thumbrise/autosolve/internal/infrastructure/dal/repositories"
@@ -29,7 +31,8 @@ func InitializeKernel(contextContext context.Context, reader *config.Reader, log
 	if err != nil {
 		return nil, err
 	}
-	client := github.NewGithubClient(contextContext, configGithub)
+	client := github.NewGithubClient(configGithub)
+	githubClient := github.NewClient(configGithub, client, logger)
 	configDatabase, err := config2.NewDatabase(contextContext, reader)
 	if err != nil {
 		return nil, err
@@ -39,17 +42,18 @@ func InitializeKernel(contextContext context.Context, reader *config.Reader, log
 		return nil, err
 	}
 	issueRepository := repositories.NewIssueRepository(db, logger)
-	parser := issue.NewParser(configGithub, client, issueRepository, logger)
-	worker := issue.NewWorker(configGithub, logger, parser)
-	scheduler := application.NewScheduler(worker, logger)
+	parser := issue.NewParser(configGithub, githubClient, issueRepository, logger)
+	issueUpdatesPoller := workers.NewIssueUpdatesPoller(configGithub, logger, parser)
+	v := worker.NewWorkers(issueUpdatesPoller)
+	scheduler := application.NewScheduler(v, logger)
 	schedule := cmds.NewSchedule(scheduler)
 	test := cmds.NewTest(logger)
 	testSubTree := cmds.NewTestSubTree(logger)
-	v := cmd.NewCommands(schedule, test, testSubTree)
-	v2 := _wireValue
-	migrator := database.NewMigrator(db, logger, v2)
+	v2 := cmd.NewCommands(schedule, test, testSubTree)
+	v3 := _wireValue
+	migrator := database.NewMigrator(db, logger, v3)
 	root := cmd.NewRoot()
-	kernel := NewKernel(v, logger, migrator, root, telemetryTelemetry)
+	kernel := NewKernel(v2, logger, migrator, root, telemetryTelemetry)
 	return kernel, nil
 }
 

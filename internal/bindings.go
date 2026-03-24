@@ -18,8 +18,10 @@ import (
 	"github.com/google/wire"
 
 	"github.com/thumbrise/autosolve/internal/application"
-	"github.com/thumbrise/autosolve/internal/application/issue"
+	"github.com/thumbrise/autosolve/internal/application/worker"
+	"github.com/thumbrise/autosolve/internal/application/worker/workers"
 	"github.com/thumbrise/autosolve/internal/config"
+	"github.com/thumbrise/autosolve/internal/domain/issue"
 	"github.com/thumbrise/autosolve/internal/infrastructure/dal"
 	"github.com/thumbrise/autosolve/internal/infrastructure/dal/repositories"
 	"github.com/thumbrise/autosolve/internal/infrastructure/database"
@@ -36,11 +38,13 @@ var Bindings = wire.NewSet(
 		wire.Value(dal.Models),
 	),
 
+	github.NewClient,
 	github.NewGithubClient,
 
 	application.NewScheduler,
 
-	issue.NewWorker,
+	worker.NewWorkers,
+	workers.NewIssueUpdatesPoller,
 	issue.NewParser,
 
 	repositories.NewIssueRepository,
