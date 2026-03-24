@@ -63,8 +63,9 @@ func WithConfig(ctx context.Context, cfg config.Log) *slog.Logger {
 
 	if cfg.Debug {
 		opts.Level = slog.LevelDebug
-		opts.AddSource = true
 	}
+
+	opts.AddSource = cfg.Source
 
 	l := slog.New(slog.NewTextHandler(os.Stdout, opts))
 
