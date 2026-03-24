@@ -16,7 +16,6 @@ package longrun
 
 import (
 	"context"
-	"errors"
 	"log/slog"
 	"time"
 
@@ -83,8 +82,10 @@ func (r *Runner) Wait(ctx context.Context) error {
 	grp, ctxGrp := errgroup.WithContext(ctx)
 
 	for _, task := range r.tasks {
+		t := task
+
 		grp.Go(func() error {
-			return task.Wait(ctxGrp)
+			return t.Wait(ctxGrp)
 		})
 	}
 
@@ -100,7 +101,10 @@ func (r *Runner) Wait(ctx context.Context) error {
 
 	r.shutdownTasks(ctxShutdown)
 
-	if err != nil && !errors.Is(err, context.Canceled) {
+	// Only suppress the error when the parent context was actually cancelled.
+	// Checking ctx.Err() instead of errors.Is(err, context.Canceled) prevents
+	// swallowing a domain error that happens to wrap context.Canceled.
+	if err != nil && ctx.Err() == nil {
 		r.logger.ErrorContext(ctx, "runner error", slog.Any("error", err))
 
 		return err

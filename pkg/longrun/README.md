@@ -69,7 +69,7 @@ Examples:
 Passing nil or an unsupported type panics at construction time:
 `"longrun.NewMatcher: errVal must be an error value or pointer to error type (*T), got: %T"`
 
-Each rule has its own attempt budget. When an interval task completes a successful tick, all rule trackers reset.
+Each rule has its own attempt budget. `MaxRetries` limits **consecutive** failures for a given rule. When an interval task completes a successful tick, **all** rule trackers reset to zero — so intermittent failures separated by successful ticks never accumulate toward `MaxRetries`. For one-shot tasks the budget is never reset mid-execution.
 
 ## Building blocks
 The package exposes low-level building blocks used internally by Task. They are exported for testability and advanced use cases, but most users should only create Tasks.

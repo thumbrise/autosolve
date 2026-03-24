@@ -67,7 +67,9 @@ func TestRunner_ShutdownHooks_LIFO(t *testing.T) {
 	runner.Add(longrun.NewOneShotTask("a", func(context.Context) error { return nil }, nil,
 		longrun.WithShutdown(func(context.Context) error {
 			mu.Lock()
+
 			order = append(order, "a")
+
 			mu.Unlock()
 
 			return nil
@@ -77,7 +79,9 @@ func TestRunner_ShutdownHooks_LIFO(t *testing.T) {
 	runner.Add(longrun.NewOneShotTask("b", func(context.Context) error { return nil }, nil,
 		longrun.WithShutdown(func(context.Context) error {
 			mu.Lock()
+
 			order = append(order, "b")
+
 			mu.Unlock()
 
 			return nil
@@ -87,7 +91,9 @@ func TestRunner_ShutdownHooks_LIFO(t *testing.T) {
 	runner.Add(longrun.NewOneShotTask("c", func(context.Context) error { return nil }, nil,
 		longrun.WithShutdown(func(context.Context) error {
 			mu.Lock()
+
 			order = append(order, "c")
+
 			mu.Unlock()
 
 			return nil

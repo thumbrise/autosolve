@@ -16,7 +16,7 @@ How to update:
 
 - **Single responsibility** — small types, small functions, one job each.
 - **Open/closed** — extend through new types, don't modify existing ones.
-- **Encapsulation** — exported types with unexported fields. Force construction through constructors, not struct literals.
+- **Encapsulation** — exported types with unexported fields. Force construction through constructors, not struct literals. Exception: pure config/value types (e.g. `BackoffConfig`, `TransientRule`) may use exported fields when validated at construction time by the consuming constructor.
 - **Fail early** — invalid configuration panics at construction time, not silently misbehaves at runtime. Panics are for programmer errors (wrong config, nil where not allowed). Errors are for runtime failures (network, IO, external systems).
 - **Safe zero-values** — the zero-value of a config field should be safe, not surprising. If zero means "use default", document it in godoc and log a warning so it's visible. Example: `// MaxRetries: 0 (zero-value) → DefaultMaxRetries (3). Logs a warning.`
 - **Concrete names** — name types and functions after what they do, not what pattern they follow.

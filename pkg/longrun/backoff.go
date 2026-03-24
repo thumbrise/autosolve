@@ -47,10 +47,18 @@ func DefaultBackoff() BackoffConfig {
 }
 
 // Duration returns the backoff duration for the given 0-based attempt index.
+//
+// When Max > 0, the result is capped at Max.
+// When Max is 0 (no cap) and the computed duration overflows (e.g. after
+// thousands of attempts with UnlimitedRetries), Duration clamps to math.MaxInt64.
 func (b *BackoffConfig) Duration(attempt int) time.Duration {
 	d := float64(b.Initial) * math.Pow(b.Multiplier, float64(attempt))
 	if b.Max > 0 && d > float64(b.Max) {
 		d = float64(b.Max)
+	}
+
+	if math.IsInf(d, 0) || math.IsNaN(d) || d > float64(math.MaxInt64) {
+		return time.Duration(math.MaxInt64)
 	}
 
 	return time.Duration(d)
