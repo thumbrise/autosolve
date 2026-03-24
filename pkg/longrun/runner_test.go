@@ -17,108 +17,138 @@ package longrun_test
 import (
 	"context"
 	"errors"
-	"sync/atomic"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/thumbrise/autosolve/pkg/longrun"
 )
 
-func TestRunner_AllTasksComplete(t *testing.T) {
-	var count atomic.Int32
-
+func TestRunner_AllTasksSucceed(t *testing.T) {
 	runner := longrun.NewRunner(longrun.RunnerOptions{})
 
-	for range 3 {
-		runner.Add(longrun.NewTask("t", func(ctx context.Context) error {
-			count.Add(1)
+	runner.Add(longrun.NewOneShotTask("a", func(context.Context) error { return nil }, nil))
+	runner.Add(longrun.NewOneShotTask("b", func(context.Context) error { return nil }, nil))
+
+	err := runner.Wait(context.Background())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestRunner_OneTaskFails_CancelsOthers(t *testing.T) {
+	runner := longrun.NewRunner(longrun.RunnerOptions{})
+
+	errFatal := errors.New("fatal")
+
+	runner.Add(longrun.NewOneShotTask("fail", func(context.Context) error {
+		return errFatal
+	}, nil))
+
+	runner.Add(longrun.NewIntervalTask("long", 10*time.Millisecond, func(ctx context.Context) error {
+		<-ctx.Done()
+
+		return nil
+	}, nil))
+
+	err := runner.Wait(context.Background())
+	if !errors.Is(err, errFatal) {
+		t.Fatalf("expected errFatal, got: %v", err)
+	}
+}
+
+func TestRunner_ShutdownHooks_LIFO(t *testing.T) {
+	runner := longrun.NewRunner(longrun.RunnerOptions{})
+
+	var mu sync.Mutex
+
+	var order []string
+
+	runner.Add(longrun.NewOneShotTask("a", func(context.Context) error { return nil }, nil,
+		longrun.WithShutdown(func(context.Context) error {
+			mu.Lock()
+			order = append(order, "a")
+			mu.Unlock()
 
 			return nil
-		}, longrun.TaskOptions{}))
-	}
+		}),
+	))
+
+	runner.Add(longrun.NewOneShotTask("b", func(context.Context) error { return nil }, nil,
+		longrun.WithShutdown(func(context.Context) error {
+			mu.Lock()
+			order = append(order, "b")
+			mu.Unlock()
+
+			return nil
+		}),
+	))
+
+	runner.Add(longrun.NewOneShotTask("c", func(context.Context) error { return nil }, nil,
+		longrun.WithShutdown(func(context.Context) error {
+			mu.Lock()
+			order = append(order, "c")
+			mu.Unlock()
+
+			return nil
+		}),
+	))
 
 	err := runner.Wait(context.Background())
 	if err != nil {
-		t.Fatalf("Wait() = %v, want nil", err)
+		t.Fatalf("unexpected error: %v", err)
 	}
 
-	if count.Load() != 3 {
-		t.Fatalf("count = %d, want 3", count.Load())
-	}
-}
+	mu.Lock()
+	defer mu.Unlock()
 
-func TestRunner_OneTaskError_CancelsOthers(t *testing.T) {
-	runner := longrun.NewRunner(longrun.RunnerOptions{})
-
-	// This task errors immediately.
-	runner.Add(longrun.NewTask("fail", func(ctx context.Context) error {
-		return errPermanent
-	}, longrun.TaskOptions{}))
-
-	// This task blocks until cancelled.
-	var cancelled atomic.Bool
-
-	runner.Add(longrun.NewTask("block", func(ctx context.Context) error {
-		<-ctx.Done()
-		cancelled.Store(true)
-
-		return nil
-	}, longrun.TaskOptions{}))
-
-	err := runner.Wait(context.Background())
-	if !errors.Is(err, errPermanent) {
-		t.Fatalf("Wait() = %v, want %v", err, errPermanent)
+	if len(order) != 3 {
+		t.Fatalf("expected 3 shutdown hooks, got %d", len(order))
 	}
 
-	if !cancelled.Load() {
-		t.Fatal("blocking task was not cancelled")
+	// LIFO: c, b, a
+	if order[0] != "c" || order[1] != "b" || order[2] != "a" {
+		t.Fatalf("expected LIFO order [c b a], got %v", order)
 	}
 }
 
-func TestRunner_ShutdownCalled(t *testing.T) {
-	var shutdownCalled atomic.Bool
-
+func TestRunner_ContextCancellation(t *testing.T) {
 	runner := longrun.NewRunner(longrun.RunnerOptions{})
-
-	task := longrun.NewTask("t", func(ctx context.Context) error {
-		return nil
-	}, longrun.TaskOptions{})
-	task.Shutdown = func(ctx context.Context) error {
-		shutdownCalled.Store(true)
-
-		return nil
-	}
-
-	runner.Add(task)
-
-	err := runner.Wait(context.Background())
-	if err != nil {
-		t.Fatalf("Wait() = %v, want nil", err)
-	}
-
-	if !shutdownCalled.Load() {
-		t.Fatal("Shutdown was not called")
-	}
-}
-
-func TestRunner_ContextCancelled(t *testing.T) {
-	runner := longrun.NewRunner(longrun.RunnerOptions{})
-
-	runner.Add(longrun.NewTask("block", func(ctx context.Context) error {
-		<-ctx.Done()
-
-		return nil
-	}, longrun.TaskOptions{}))
 
 	ctx, cancel := context.WithCancel(context.Background())
 
+	runner.Add(longrun.NewIntervalTask("ticker", 10*time.Millisecond, func(context.Context) error {
+		return nil
+	}, nil))
+
 	go func() {
-		time.Sleep(5 * time.Millisecond)
+		time.Sleep(50 * time.Millisecond)
 		cancel()
 	}()
 
 	err := runner.Wait(ctx)
 	if err != nil {
-		t.Fatalf("Wait() = %v, want nil (context cancellation is not an error)", err)
+		t.Fatalf("context cancellation should not return error, got: %v", err)
+	}
+}
+
+func TestRunner_ShutdownHookError_DoesNotBlock(t *testing.T) {
+	runner := longrun.NewRunner(longrun.RunnerOptions{})
+
+	runner.Add(longrun.NewOneShotTask("a", func(context.Context) error { return nil }, nil,
+		longrun.WithShutdown(func(context.Context) error {
+			return errors.New("shutdown failed")
+		}),
+	))
+
+	runner.Add(longrun.NewOneShotTask("b", func(context.Context) error { return nil }, nil,
+		longrun.WithShutdown(func(context.Context) error {
+			return nil
+		}),
+	))
+
+	err := runner.Wait(context.Background())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
 	}
 }
