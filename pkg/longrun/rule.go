@@ -31,11 +31,11 @@ type TransientRule struct {
 	// Err is the error to match.
 	// Must be an error value (for errors.Is) or a pointer to an error type (for errors.As).
 	// Passing nil or an unsupported type panics at construction time.
-	Err any
 	// Examples:
 	//
 	//	{Err: ErrTimeout}           // sentinel → errors.Is
 	//	{Err: (*net.OpError)(nil)}  // pointer-to-type → errors.As
+	Err error
 
 	// MaxRetries limits consecutive retry attempts for this rule.
 	//   0 (zero-value) → DefaultMaxRetries (3) — safe default.
