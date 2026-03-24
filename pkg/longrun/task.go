@@ -18,6 +18,9 @@ import (
 	"context"
 	"log/slog"
 	"time"
+
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/codes"
 )
 
 // WorkFunc is the function that performs the actual work of a task.
@@ -282,6 +285,9 @@ func (t *Task) runLoop(ctx context.Context) (error, bool) {
 
 // runOnce executes the work function once, optionally with a per-invocation timeout.
 func (t *Task) runOnce(ctx context.Context) error {
+	ctx, span := otel.Tracer("github.com/thumbrise/autosolve/pkg/longrun").Start(ctx, t.name)
+	defer span.End()
+
 	if t.timeout > 0 {
 		var cancel context.CancelFunc
 
@@ -291,5 +297,11 @@ func (t *Task) runOnce(ctx context.Context) error {
 		t.logger.DebugContext(ctx, "timeout applied", slog.Any("timeout", t.timeout))
 	}
 
-	return t.work(ctx)
+	err := t.work(ctx)
+	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
+	}
+
+	return err
 }

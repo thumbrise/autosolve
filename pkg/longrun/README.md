@@ -124,6 +124,22 @@ pkg/longrun/
 └── TODO.md
 ```
 
+## Observability
+
+Every invocation of the work function is automatically wrapped in an OpenTelemetry span inside `runOnce`. The span is named after the task (`name` parameter from the constructor).
+- **No SDK configured** → `otel.Tracer` returns a no-op tracer, zero overhead.
+- **SDK configured** → every invocation, retry, and error is visible in the tracing backend.
+  The span records errors automatically: `span.RecordError(err)` + `span.SetStatus(codes.Error, ...)` on failure. Users get full observability without writing any OTEL code in their work functions.
+
+```text
+[longrun/task: "polling issues"]           ← automatic span from longrun
+└─[IssuePolling.work]                    ← user's child span (optional)
+└─[Parser.Run]                       ← domain span (optional)
+└─[SQL INSERT]                   ← infra span (optional)
+```
+
+Combined with a `slog.Handler` that extracts span context (trace_id, span_id, scope), every log line emitted via `logger.InfoContext(ctx, ...)` is automatically correlated with the active trace — zero boilerplate in business code.
+
 ## Design decisions
 - **Transient errors whitelist** — empty rules = all errors permanent. Lower layers provide sentinel errors, orchestrator decides what to retry.
 - **Per-error retry** — different errors can have different MaxRetries and BackoffConfig. Careful retry for loaded external APIs, aggressive retry for local resources.
