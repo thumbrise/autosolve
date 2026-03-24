@@ -20,8 +20,6 @@ import (
 	"os"
 
 	"github.com/m-mizutani/masq"
-	slogmulti "github.com/samber/slog-multi"
-	"go.opentelemetry.io/contrib/bridges/otelslog"
 
 	"github.com/thumbrise/autosolve/internal/config"
 	stringsutil "github.com/thumbrise/autosolve/pkg/strings"
@@ -67,27 +65,14 @@ func WithConfig(ctx context.Context, cfg config.Log) *slog.Logger {
 
 	opts.AddSource = cfg.Source
 
-	l := slog.New(slog.NewTextHandler(os.Stdout, opts))
+	textHandler := slog.NewTextHandler(os.Stdout, opts)
+	spanContextHandler := NewSpanContextHandler(textHandler)
+
+	l := slog.New(spanContextHandler)
 
 	l.DebugContext(ctx, "logger loaded",
 		slog.Any("cfg", cfg),
 	)
 
 	return l
-}
-
-// WithOtelBridge extends the given logger with an OTEL slog bridge handler via fanout.
-//
-// The otelslog handler is created WITHOUT an explicit LoggerProvider — it resolves
-// global.GetLoggerProvider() on every log call. This means:
-//   - Before telemetry.New → global provider is noop → logs silently discarded by OTEL handler
-//   - After telemetry.New calls global.SetLoggerProvider → logs start flowing to collector
-//
-// This allows the logger to be fully configured in EarlyBootstrap (before any network I/O),
-// while the actual OTEL export activates later when the Wire graph creates Telemetry.
-func WithOtelBridge(logger *slog.Logger, serviceName string) *slog.Logger {
-	existingHandler := logger.Handler()
-	otelHandler := otelslog.NewHandler(serviceName, otelslog.WithSource(true))
-
-	return slog.New(slogmulti.Fanout(existingHandler, otelHandler))
 }
