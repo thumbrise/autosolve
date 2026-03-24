@@ -86,7 +86,7 @@ func WithConfig(ctx context.Context, cfg config.Log) *slog.Logger {
 // while the actual OTEL export activates later when the Wire graph creates Telemetry.
 func WithOtelBridge(logger *slog.Logger, serviceName string) *slog.Logger {
 	existingHandler := logger.Handler()
-	otelHandler := otelslog.NewHandler(serviceName)
+	otelHandler := otelslog.NewHandler(serviceName, otelslog.WithSource(true))
 
 	return slog.New(slogmulti.Fanout(existingHandler, otelHandler))
 }
