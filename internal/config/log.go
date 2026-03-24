@@ -21,7 +21,8 @@ import (
 )
 
 type Log struct {
-	Debug bool
+	Debug  bool
+	Source bool
 }
 
 func NewLog(ctx context.Context, reader *config.Reader) (*Log, error) {
