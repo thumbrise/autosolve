@@ -65,9 +65,9 @@ func (r *IssueRepository) UpsertMany(ctx context.Context, issues []*model.Issue)
 func (r *IssueRepository) GetLastUpdateTime(ctx context.Context) (time.Time, error) {
 	m := model.Issue{}
 
-	resp := r.db.WithContext(ctx).Select("issue_id", "github_updated_at").Order("github_updated_at desc").First(&m)
-	if resp.Error != nil {
-		return time.Time{}, resp.Error
+	err := r.db.WithContext(ctx).Select("issue_id", "github_updated_at").Order("github_updated_at desc").First(&m).Error
+	if err != nil {
+		return time.Time{}, err
 	}
 
 	r.logger.DebugContext(ctx, "found last update time",
