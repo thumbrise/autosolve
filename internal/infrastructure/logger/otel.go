@@ -48,6 +48,7 @@ func (h *SpanContextHandler) Handle(ctx context.Context, record slog.Record) err
 	if span.SpanContext().IsValid() {
 		sc := span.SpanContext()
 		record.AddAttrs(
+			// Truncated for terminal readability; full IDs are exported via OTLP bridge.
 			slog.String("trace_id", sc.TraceID().String()[:4]),
 			slog.String("span_id", sc.SpanID().String()[:4]),
 		)
