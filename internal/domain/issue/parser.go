@@ -167,7 +167,9 @@ func (p *Parser) lastUpdate(ctx context.Context) (time.Time, error) {
 // The original error is available in the chain via errors.As
 // for accessing reset time and remaining quota.
 //
-// If err is *github.RateLimitError or *github.AbuseRateLimitError then returns true, otherwise returns false and you should handle original error
+// If err is *github.RateLimitError or *github.AbuseRateLimitError (with RetryAfter set) then returns true after sleeping.
+// If err is *github.AbuseRateLimitError without RetryAfter, returns false to let the caller handle retry via exponential backoff.
+// For all other errors, returns false and you should handle original error.
 func (p *Parser) adaptRateLimit(ctx context.Context, err error) bool {
 	var (
 		wait     time.Duration
