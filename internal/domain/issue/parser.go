@@ -27,80 +27,67 @@ import (
 	"github.com/thumbrise/autosolve/internal/infrastructure/dal"
 	"github.com/thumbrise/autosolve/internal/infrastructure/dal/model"
 	"github.com/thumbrise/autosolve/internal/infrastructure/dal/repositories"
+	githubinfra "github.com/thumbrise/autosolve/internal/infrastructure/github"
 )
 
 // Sentinel errors for classifying parser failures.
 // Callers can use these with errors.Is to decide retry strategy.
 var (
-	ErrFetchIssues = errors.New("fetch issues")
-	ErrStoreIssues = errors.New("store issues")
+	ErrFetchIssues     = errors.New("fetch issues")
+	ErrStoreIssues     = errors.New("store issues")
+	ErrGithubRateLimit = errors.New("githubinfra rate limit")
+	ErrReadLastUpdate  = errors.New("read last update")
 )
 
 type Parser struct {
-	githubClient    *github.Client
+	githubClient    *githubinfra.Client
 	logger          *slog.Logger
 	issueRepository *repositories.IssueRepository
 	cfg             *config.Github
 }
 
-func NewParser(cfg *config.Github, githubClient *github.Client, issueRepository *repositories.IssueRepository, logger *slog.Logger) *Parser {
+func NewParser(cfg *config.Github, githubClient *githubinfra.Client, issueRepository *repositories.IssueRepository, logger *slog.Logger) *Parser {
 	return &Parser{cfg: cfg, githubClient: githubClient, issueRepository: issueRepository, logger: logger}
 }
 
-func (p *Parser) Run(ctx context.Context) (int, error) {
-	logger := p.logger.With(slog.String("component", "issue-parser"))
+func (p *Parser) Run(ctx context.Context) error {
+	p.logger.DebugContext(ctx, "starting request to list issues")
 
-	opts, err := p.options(ctx)
+	lastUpdate, err := p.lastUpdate(ctx)
 	if err != nil {
-		return 0, fmt.Errorf("%w: build options: %w", ErrFetchIssues, err)
+		// TODO: add transient info
+		return fmt.Errorf("%w: fetch last update: %w", ErrReadLastUpdate, err)
 	}
 
-	logger.DebugContext(ctx, "starting request to list issues",
-		"opts", opts,
-	)
-
-	issues, _, err := p.githubClient.Issues.ListByRepo(ctx, p.cfg.Owner, p.cfg.Repo, opts)
+	issues, _, err := p.githubClient.GetMostUpdatedIssues(ctx, 50, lastUpdate)
 	if err != nil {
-		return 0, fmt.Errorf("%w: list by repo: %w", ErrFetchIssues, err)
+		// TODO: add pause logic until Rate Limit resets
+		//  add log warn for exhaust
+		// var rlErr *github.RateLimitError
+		// if errors.As(err, &rlErr) {
+		//}
+		return fmt.Errorf("%w: list by repo: %w", ErrFetchIssues, err)
 	}
 
 	if len(issues) == 0 {
-		logger.InfoContext(ctx, "no new issues found")
+		// TODO: adaptive polling — increase interval when no new issues found,
+		//  reset to base interval on data. Reduces GitHub API load during quiet periods.
+		//  add function in longrun for backoff
+		p.logger.InfoContext(ctx, "no new issues found")
 
-		return 0, nil
+		return nil
 	}
 
-	logger.InfoContext(ctx, "fetched", slog.Int("count", len(issues)))
+	p.logger.InfoContext(ctx, "fetched", slog.Int("count", len(issues)))
 
 	err = p.store(ctx, issues)
 	if err != nil {
-		return 0, fmt.Errorf("%w: %w", ErrStoreIssues, err)
+		return fmt.Errorf("%w: %w", ErrStoreIssues, err)
 	}
 
-	logger.InfoContext(ctx, "issues stored", slog.Int("count", len(issues)))
+	p.logger.InfoContext(ctx, "stored", slog.Int("count", len(issues)))
 
-	return len(issues), nil
-}
-
-func (p *Parser) options(ctx context.Context) (*github.IssueListByRepoOptions, error) {
-	opts := &github.IssueListByRepoOptions{
-		State:             "open",
-		Sort:              "updated",
-		Direction:         "asc",
-		ListCursorOptions: github.ListCursorOptions{},
-		ListOptions: github.ListOptions{
-			PerPage: 50,
-		},
-	}
-
-	since, err := p.optionSince(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	opts.Since = since
-
-	return opts, nil
+	return nil
 }
 
 func (p *Parser) store(ctx context.Context, issues []*github.Issue) error {
@@ -161,7 +148,7 @@ func (p *Parser) mapIssueToModel(issue *github.Issue) *model.Issue {
 	return result
 }
 
-func (p *Parser) optionSince(ctx context.Context) (time.Time, error) {
+func (p *Parser) lastUpdate(ctx context.Context) (time.Time, error) {
 	res, err := p.issueRepository.GetLastUpdateTime(ctx)
 	if err != nil {
 		if dal.IsNotFound(err) {
