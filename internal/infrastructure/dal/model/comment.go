@@ -12,15 +12,19 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package dal
+package model
 
-import "github.com/thumbrise/autosolve/internal/infrastructure/dal/model"
+import "time"
 
-var Models = []interface{}{
-	model.Repository{},
-	model.Issue{},
-	model.Comment{},
-	model.Label{},
-	model.User{},
-	model.SyncCursor{},
+type Comment struct {
+	Record
+	IssueID         uint64    `gorm:"not null;index"`
+	GithubID        int64     `gorm:"not null;uniqueIndex"`
+	Body            string    `gorm:"type:text"`
+	AuthorLogin     string    `gorm:"type:varchar(255)"`
+	AuthorGithubID  int64     `gorm:"index"`
+	GithubCreatedAt time.Time `gorm:"not null"`
+	GithubUpdatedAt time.Time `gorm:"not null;index"`
+	// Relations
+	Issue *Issue `gorm:"foreignKey:IssueID"`
 }

@@ -109,43 +109,24 @@ func (p *Parser) mapIssueToModel(issue *github.Issue) *model.Issue {
 	now := time.Now()
 
 	result := &model.Issue{
-		IssueID:         issue.GetID(),
+		GithubID:        issue.GetID(),
+		Number:          issue.GetNumber(),
 		Title:           issue.GetTitle(),
 		Body:            issue.GetBody(),
 		State:           state,
-		Status:          model.IssueProcessingStatusPending,
+		IsPullRequest:   issue.IsPullRequest(),
 		GithubCreatedAt: issue.GetCreatedAt().Time,
 		GithubUpdatedAt: issue.GetUpdatedAt().Time,
-		SyncedAt:        &now,
+		SyncedAt:        now,
 	}
-
-	labels := make([]*model.IssueLabel, 0, len(issue.Labels))
-	for _, gl := range issue.Labels {
-		l := &model.IssueLabel{
-			ID:          gl.GetID(),
-			URL:         gl.GetURL(),
-			Name:        gl.GetName(),
-			Color:       gl.GetColor(),
-			Description: gl.GetDescription(),
-			NodeID:      gl.GetNodeID(),
-			Default:     gl.GetDefault(),
-		}
-		labels = append(labels, l)
+	if issue.PullRequestLinks != nil {
+		result.PRUrl = issue.PullRequestLinks.URL
+		result.PRHtmlUrl = issue.PullRequestLinks.HTMLURL
+		result.PRDiffUrl = issue.PullRequestLinks.DiffURL
+		result.PRPatchUrl = issue.PullRequestLinks.PatchURL
 	}
-
-	result.Labels = labels
-
-	assignees := make([]*model.IssueAssignee, 0, len(issue.Assignees))
-	for _, ga := range issue.Assignees {
-		a := &model.IssueAssignee{
-			ID:    ga.GetID(),
-			Login: ga.GetLogin(),
-		}
-		assignees = append(assignees, a)
-	}
-
-	result.Assignees = assignees
-
+	//nolint:godox // milestone temp
+	// TODO: labels and assignees via M:N — separate step
 	return result
 }
 

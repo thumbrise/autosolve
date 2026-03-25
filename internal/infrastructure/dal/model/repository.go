@@ -12,15 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package dal
+package model
 
-import "github.com/thumbrise/autosolve/internal/infrastructure/dal/model"
-
-var Models = []interface{}{
-	model.Repository{},
-	model.Issue{},
-	model.Comment{},
-	model.Label{},
-	model.User{},
-	model.SyncCursor{},
+type Repository struct {
+	Record
+	Owner     string  `gorm:"type:varchar(255);not null;uniqueIndex:idx_owner_name"`
+	Name      string  `gorm:"type:varchar(255);not null;uniqueIndex:idx_owner_name"`
+	Enabled   bool    `gorm:"default:true;index"`
+	LastError *string `gorm:"type:text"`
 }
