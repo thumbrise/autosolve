@@ -15,9 +15,21 @@
 package cmds
 
 import (
+	"bufio"
+	"errors"
+	"fmt"
+	"strconv"
+	"strings"
+
+	"github.com/pressly/goose/v3"
 	"github.com/spf13/cobra"
 
 	"github.com/thumbrise/autosolve/internal/infrastructure/database"
+)
+
+var (
+	ErrInvalidSteps    = errors.New("steps must be a positive number")
+	ErrInvalidDownArgs = errors.New("down requires a positive number or *")
 )
 
 // Migrate is a proxy command that dispatches goose operations.
@@ -27,43 +39,70 @@ import (
 //
 //	go run . migrate status
 //	go run . migrate up
-//	go run . migrate down
-//	go run . migrate create add_users sql
+//	go run . migrate down 1
+//	go run . migrate create add_users
 type Migrate struct {
 	*cobra.Command
 }
 
-func NewMigrate(migrator *database.Migrator) *Migrate {
+func NewMigrate() *Migrate {
 	root := &cobra.Command{
 		Use:   "migrate",
 		Short: "Database migration commands (goose proxy)",
 	}
 
-	root.AddCommand(
-		newMigrateUp(migrator),
-		newMigrateDown(migrator),
-		newMigrateStatus(migrator),
-		newMigrateCreate(migrator),
-		newMigrateRedo(migrator),
-		newMigrateFresh(migrator),
-	)
-
 	return &Migrate{root}
 }
 
-func newMigrateUp(migrator *database.Migrator) *cobra.Command {
-	return &cobra.Command{
-		Use:   "up",
-		Short: "Apply all pending migrations",
+type MigrateUp struct {
+	*cobra.Command
+}
+
+type MigrateUpFresh struct {
+	*cobra.Command
+}
+
+type MigrateDown struct {
+	*cobra.Command
+}
+
+type MigrateStatus struct {
+	*cobra.Command
+}
+
+type MigrateCreate struct {
+	*cobra.Command
+}
+
+type MigrateRedo struct {
+	*cobra.Command
+}
+
+func NewMigrateUp(migrator *database.Migrator) *MigrateUp {
+	cmd := &cobra.Command{
+		Use:   "up [steps]",
+		Short: "Apply pending migrations (all by default)",
+		Long:  "Apply pending migrations. Optionally pass step count.\nRequires --yes or interactive confirmation.",
+		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			results, err := migrator.Up(cmd.Context())
+			yes, _ := cmd.Flags().GetBool("yes")
+			if !yes && !confirmInteractive(cmd, "Apply pending migrations?") {
+				cmd.Println("aborted")
+
+				return nil
+			}
+
+			steps, err := parseSteps(args)
 			if err != nil {
 				return err
 			}
 
-			for _, r := range results {
-				cmd.Printf("OK  %s (%s)\n", r.Source.Path, r.Duration)
+			results, err := migrator.Up(cmd.Context(), steps)
+			if err != nil {
+				return err
 			}
+
+			printApplied(cmd, results)
 
 			if len(results) == 0 {
 				cmd.Println("no pending migrations")
@@ -72,33 +111,97 @@ func newMigrateUp(migrator *database.Migrator) *cobra.Command {
 			return nil
 		},
 	}
+
+	cmd.Flags().BoolP("yes", "y", false, "Skip confirmation prompt")
+
+	return &MigrateUp{cmd}
 }
 
-func newMigrateDown(migrator *database.Migrator) *cobra.Command {
-	return &cobra.Command{
-		Use:   "down",
-		Short: "Roll back the last migration",
+func NewMigrateUpFresh(migrator *database.Migrator) *MigrateUpFresh {
+	cmd := &cobra.Command{
+		Use:   "up:fresh",
+		Short: "Drop all tables and re-run all migrations",
+		Long:  "Rolls back all migrations, then applies all from scratch.\nRequires --yes or interactive confirmation.",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			result, err := migrator.Down(cmd.Context())
-			if err != nil {
-				return err
-			}
-
-			if result == nil {
-				cmd.Println("no migrations to roll back")
+			yes, _ := cmd.Flags().GetBool("yes")
+			if !yes && !confirmInteractive(cmd, "Drop ALL tables and re-run ALL migrations?") {
+				cmd.Println("aborted")
 
 				return nil
 			}
 
-			cmd.Printf("ROLLED BACK  %s (%s)\n", result.Source.Path, result.Duration)
+			results, err := migrator.Fresh(cmd.Context())
+			if err != nil {
+				return err
+			}
+
+			printApplied(cmd, results)
+			cmd.Println("fresh migration complete")
 
 			return nil
 		},
 	}
+
+	cmd.Flags().BoolP("yes", "y", false, "Skip confirmation prompt")
+
+	return &MigrateUpFresh{cmd}
 }
 
-func newMigrateStatus(migrator *database.Migrator) *cobra.Command {
-	return &cobra.Command{
+func NewMigrateDown(migrator *database.Migrator) *MigrateDown {
+	cmd := &cobra.Command{
+		Use:   "down <steps|*>",
+		Short: "Roll back migrations",
+		Long:  "Roll back migrations. Requires step count or * for all.\nRequires --yes or interactive confirmation.",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			yes, _ := cmd.Flags().GetBool("yes")
+
+			if args[0] == "*" {
+				if !yes && !confirmInteractive(cmd, "Roll back ALL migrations?") {
+					cmd.Println("aborted")
+
+					return nil
+				}
+
+				results, err := migrator.DownAll(cmd.Context())
+				if err != nil {
+					return err
+				}
+
+				printRolledBack(cmd, results)
+
+				return nil
+			}
+
+			steps, err := strconv.Atoi(args[0])
+			if err != nil || steps <= 0 {
+				return fmt.Errorf("%w: got %q", ErrInvalidDownArgs, args[0])
+			}
+
+			if !yes && !confirmInteractive(cmd, fmt.Sprintf("Roll back %d migration(s)?", steps)) {
+				cmd.Println("aborted")
+
+				return nil
+			}
+
+			results, err := migrator.Down(cmd.Context(), steps)
+			if err != nil {
+				return err
+			}
+
+			printRolledBack(cmd, results)
+
+			return nil
+		},
+	}
+
+	cmd.Flags().BoolP("yes", "y", false, "Skip confirmation prompt")
+
+	return &MigrateDown{cmd}
+}
+
+func NewMigrateStatus(migrator *database.Migrator) *MigrateStatus {
+	return &MigrateStatus{&cobra.Command{
 		Use:   "status",
 		Short: "Show migration status",
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -113,11 +216,11 @@ func newMigrateStatus(migrator *database.Migrator) *cobra.Command {
 
 			return nil
 		},
-	}
+	}}
 }
 
-func newMigrateCreate(migrator *database.Migrator) *cobra.Command {
-	return &cobra.Command{
+func NewMigrateCreate(migrator *database.Migrator) *MigrateCreate {
+	return &MigrateCreate{&cobra.Command{
 		Use:   "create [name]",
 		Short: "Create a new SQL migration file",
 		Long:  "Creates a new SQL migration file on disk.\nExample: go run . migrate create add_users",
@@ -132,49 +235,72 @@ func newMigrateCreate(migrator *database.Migrator) *cobra.Command {
 
 			return nil
 		},
-	}
+	}}
 }
 
-func newMigrateFresh(migrator *database.Migrator) *cobra.Command {
-	return &cobra.Command{
-		Use:   "fresh",
-		Short: "Drop all tables and re-run all migrations",
-		RunE: func(cmd *cobra.Command, args []string) error {
-			results, err := migrator.Fresh(cmd.Context())
-			if err != nil {
-				return err
-			}
-
-			for _, r := range results {
-				cmd.Printf("OK  %s (%s)\n", r.Source.Path, r.Duration)
-			}
-
-			cmd.Println("fresh migration complete")
-
-			return nil
-		},
-	}
-}
-
-func newMigrateRedo(migrator *database.Migrator) *cobra.Command {
-	return &cobra.Command{
+func NewMigrateRedo(migrator *database.Migrator) *MigrateRedo {
+	cmd := &cobra.Command{
 		Use:   "redo",
 		Short: "Roll back the last migration, then re-apply it",
+		Long:  "Equivalent to down 1 + up 1.\nRequires --yes or interactive confirmation.",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			downResult, upResult, err := migrator.Redo(cmd.Context())
+			yes, _ := cmd.Flags().GetBool("yes")
+			if !yes && !confirmInteractive(cmd, "Redo the last migration?") {
+				cmd.Println("aborted")
+
+				return nil
+			}
+
+			downResults, upResults, err := migrator.Redo(cmd.Context())
 			if err != nil {
 				return err
 			}
 
-			if downResult != nil {
-				cmd.Printf("ROLLED BACK  %s (%s)\n", downResult.Source.Path, downResult.Duration)
-			}
-
-			if upResult != nil {
-				cmd.Printf("OK           %s (%s)\n", upResult.Source.Path, upResult.Duration)
-			}
+			printRolledBack(cmd, downResults)
+			printApplied(cmd, upResults)
 
 			return nil
 		},
+	}
+
+	cmd.Flags().BoolP("yes", "y", false, "Skip confirmation prompt")
+
+	return &MigrateRedo{cmd}
+}
+
+// confirmInteractive prints a prompt and waits for y/n from stdin.
+func confirmInteractive(cmd *cobra.Command, prompt string) bool {
+	cmd.PrintErr(prompt + " [y/N] ")
+
+	scanner := bufio.NewScanner(cmd.InOrStdin())
+	if !scanner.Scan() {
+		return false
+	}
+
+	return strings.EqualFold(strings.TrimSpace(scanner.Text()), "y")
+}
+
+func parseSteps(args []string) (int, error) {
+	if len(args) == 0 {
+		return 0, nil
+	}
+
+	steps, err := strconv.Atoi(args[0])
+	if err != nil || steps <= 0 {
+		return 0, fmt.Errorf("%w: got %q", ErrInvalidSteps, args[0])
+	}
+
+	return steps, nil
+}
+
+func printApplied(cmd *cobra.Command, results []*goose.MigrationResult) {
+	for _, r := range results {
+		cmd.Printf("APPLIED      %s (%s)\n", r.Source.Path, r.Duration)
+	}
+}
+
+func printRolledBack(cmd *cobra.Command, results []*goose.MigrationResult) {
+	for _, r := range results {
+		cmd.Printf("ROLLED BACK  %s (%s)\n", r.Source.Path, r.Duration)
 	}
 }

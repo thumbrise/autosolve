@@ -68,38 +68,72 @@ func NewMigrator(db *gorm.DB, logger *slog.Logger) (*Migrator, error) {
 	return &Migrator{provider: provider, logger: logger}, nil
 }
 
-// Up applies all pending migrations and returns individual results.
-func (m *Migrator) Up(ctx context.Context) ([]*goose.MigrationResult, error) {
-	results, err := m.provider.Up(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("%w: up: %w", ErrMigrationFailed, err)
+// Up applies pending migrations. If steps <= 0, applies all pending migrations.
+// Otherwise applies exactly that many steps.
+func (m *Migrator) Up(ctx context.Context, steps int) ([]*goose.MigrationResult, error) {
+	if steps <= 0 {
+		results, err := m.provider.Up(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("%w: up: %w", ErrMigrationFailed, err)
+		}
+
+		m.logApplied(ctx, results)
+
+		return results, nil
 	}
 
-	for _, r := range results {
-		m.logger.InfoContext(ctx, "migration applied",
-			slog.String("file", r.Source.Path),
-			slog.String("duration", r.Duration.String()),
-		)
+	results := make([]*goose.MigrationResult, 0, steps)
+
+	for range steps {
+		r, err := m.provider.UpByOne(ctx)
+		if err != nil {
+			return results, fmt.Errorf("%w: up: %w", ErrMigrationFailed, err)
+		}
+
+		if r == nil {
+			break
+		}
+
+		results = append(results, r)
 	}
+
+	m.logApplied(ctx, results)
 
 	return results, nil
 }
 
-// Down rolls back the last applied migration.
-func (m *Migrator) Down(ctx context.Context) (*goose.MigrationResult, error) {
-	result, err := m.provider.Down(ctx)
+// Down rolls back applied migrations. Steps must be > 0, or use DownAll.
+func (m *Migrator) Down(ctx context.Context, steps int) ([]*goose.MigrationResult, error) {
+	results := make([]*goose.MigrationResult, 0, steps)
+
+	for range steps {
+		r, err := m.provider.Down(ctx)
+		if err != nil {
+			return results, fmt.Errorf("%w: down: %w", ErrMigrationFailed, err)
+		}
+
+		if r == nil {
+			break
+		}
+
+		results = append(results, r)
+	}
+
+	m.logRolledBack(ctx, results)
+
+	return results, nil
+}
+
+// DownAll rolls back all applied migrations.
+func (m *Migrator) DownAll(ctx context.Context) ([]*goose.MigrationResult, error) {
+	results, err := m.provider.DownTo(ctx, 0)
 	if err != nil {
-		return nil, fmt.Errorf("%w: down: %w", ErrMigrationFailed, err)
+		return nil, fmt.Errorf("%w: down all: %w", ErrMigrationFailed, err)
 	}
 
-	if result != nil {
-		m.logger.InfoContext(ctx, "migration rolled back",
-			slog.String("file", result.Source.Path),
-			slog.String("duration", result.Duration.String()),
-		)
-	}
+	m.logRolledBack(ctx, results)
 
-	return result, nil
+	return results, nil
 }
 
 // Status returns the status of all known migrations.
@@ -112,54 +146,47 @@ func (m *Migrator) Status(ctx context.Context) ([]*goose.MigrationStatus, error)
 	return results, nil
 }
 
-// Redo rolls back the last migration and re-applies it.
-func (m *Migrator) Redo(ctx context.Context) (*goose.MigrationResult, *goose.MigrationResult, error) {
-	down, err := m.provider.Down(ctx)
+// Redo rolls back the last migration and re-applies only that one migration.
+func (m *Migrator) Redo(ctx context.Context) ([]*goose.MigrationResult, []*goose.MigrationResult, error) {
+	downResults, err := m.Down(ctx, 1)
 	if err != nil {
-		return nil, nil, fmt.Errorf("%w: redo down: %w", ErrMigrationFailed, err)
+		return nil, nil, err
 	}
 
-	results, err := m.provider.Up(ctx)
+	upResults, err := m.Up(ctx, 1)
 	if err != nil {
-		return down, nil, fmt.Errorf("%w: redo up: %w", ErrMigrationFailed, err)
+		return downResults, nil, err
 	}
 
-	var up *goose.MigrationResult
-	if len(results) > 0 {
-		up = results[0]
-	}
-
-	return down, up, nil
+	return downResults, upResults, nil
 }
 
 // Fresh drops all tables and re-applies all migrations from scratch.
 // Development-only operation — equivalent to Laravel's migrate:fresh.
 func (m *Migrator) Fresh(ctx context.Context) ([]*goose.MigrationResult, error) {
-	downResults, err := m.provider.DownTo(ctx, 0)
-	if err != nil {
-		return nil, fmt.Errorf("%w: fresh down: %w", ErrMigrationFailed, err)
+	if _, err := m.DownAll(ctx); err != nil {
+		return nil, err
 	}
 
-	for _, r := range downResults {
-		m.logger.InfoContext(ctx, "migration rolled back",
-			slog.String("file", r.Source.Path),
-			slog.String("duration", r.Duration.String()),
-		)
-	}
+	return m.Up(ctx, 0)
+}
 
-	upResults, err := m.provider.Up(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("%w: fresh up: %w", ErrMigrationFailed, err)
-	}
-
-	for _, r := range upResults {
+func (m *Migrator) logApplied(ctx context.Context, results []*goose.MigrationResult) {
+	for _, r := range results {
 		m.logger.InfoContext(ctx, "migration applied",
 			slog.String("file", r.Source.Path),
 			slog.String("duration", r.Duration.String()),
 		)
 	}
+}
 
-	return upResults, nil
+func (m *Migrator) logRolledBack(ctx context.Context, results []*goose.MigrationResult) {
+	for _, r := range results {
+		m.logger.InfoContext(ctx, "migration rolled back",
+			slog.String("file", r.Source.Path),
+			slog.String("duration", r.Duration.String()),
+		)
+	}
 }
 
 var sqlMigrationTemplate = template.Must(template.New("goose.sql-migration").Parse(

@@ -46,14 +46,20 @@ func InitializeKernel(contextContext context.Context, reader *config.Reader, log
 	v := worker.NewWorkers(issueUpdatesPoller)
 	scheduler := application.NewScheduler(v, logger)
 	schedule := cmds.NewSchedule(scheduler)
+	migrate := cmds.NewMigrate()
 	migrator, err := database.NewMigrator(db, logger)
 	if err != nil {
 		return nil, err
 	}
+	migrateUp := cmds.NewMigrateUp(migrator)
+	migrateUpFresh := cmds.NewMigrateUpFresh(migrator)
+	migrateDown := cmds.NewMigrateDown(migrator)
+	migrateStatus := cmds.NewMigrateStatus(migrator)
+	migrateCreate := cmds.NewMigrateCreate(migrator)
+	migrateRedo := cmds.NewMigrateRedo(migrator)
 	test := cmds.NewTest(logger)
 	testSubTree := cmds.NewTestSubTree(logger)
-	migrate := cmds.NewMigrate(migrator)
-	v2 := cmd.NewCommands(schedule, migrate, test, testSubTree)
+	v2 := cmd.NewCommands(schedule, migrate, migrateUp, migrateUpFresh, migrateDown, migrateStatus, migrateCreate, migrateRedo, test, testSubTree)
 	root := cmd.NewRoot()
 	kernel := NewKernel(v2, logger, root, telemetryTelemetry)
 	return kernel, nil
