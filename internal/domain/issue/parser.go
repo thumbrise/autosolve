@@ -82,7 +82,7 @@ func (p *Parser) Run(ctx context.Context) error {
 
 	err = p.store(ctx, issues)
 	if err != nil {
-		// SQLLite GORM 1 connection pool. Always permanent
+		// SQLite 1 connection pool. Always permanent
 		return fmt.Errorf("%w: %w", ErrStoreIssues, err)
 	}
 

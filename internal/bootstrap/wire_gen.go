@@ -61,6 +61,6 @@ func InitializeKernel(contextContext context.Context, reader *config.Reader, log
 	testSubTree := cmds.NewTestSubTree(logger)
 	v2 := cmd.NewCommands(schedule, migrate, migrateUp, migrateUpFresh, migrateDown, migrateStatus, migrateCreate, migrateRedo, test, testSubTree)
 	root := cmd.NewRoot()
-	kernel := NewKernel(v2, logger, root, telemetryTelemetry)
+	kernel := NewKernel(v2, logger, root, db, telemetryTelemetry)
 	return kernel, nil
 }

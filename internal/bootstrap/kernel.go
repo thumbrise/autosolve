@@ -16,6 +16,7 @@ package bootstrap
 
 import (
 	"context"
+	"database/sql"
 	"io"
 	"log/slog"
 	"time"
@@ -33,12 +34,13 @@ type ShutdownFunc func(ctx context.Context) error
 type Kernel struct {
 	rootCommand *cmd.Root
 	commands    []*cobra.Command
+	db          *sql.DB
 	telemetry   *telemetry.Telemetry
 	logger      *slog.Logger
 }
 
-func NewKernel(commands []*cobra.Command, logger *slog.Logger, rootCommand *cmd.Root, telemetry *telemetry.Telemetry) *Kernel {
-	return &Kernel{commands: commands, logger: logger, rootCommand: rootCommand, telemetry: telemetry}
+func NewKernel(commands []*cobra.Command, logger *slog.Logger, rootCommand *cmd.Root, db *sql.DB, telemetry *telemetry.Telemetry) *Kernel {
+	return &Kernel{commands: commands, logger: logger, rootCommand: rootCommand, db: db, telemetry: telemetry}
 }
 
 func (b *Kernel) Execute(ctx context.Context, output io.Writer) error {
@@ -46,6 +48,7 @@ func (b *Kernel) Execute(ctx context.Context, output io.Writer) error {
 	b.rootCommand.SetOut(output)
 
 	defer b.shutdown(ctx, 5*time.Second, b.telemetry.Shutdown)
+	defer b.shutdownDB()
 
 	return b.rootCommand.ExecuteContext(ctx)
 }
@@ -53,6 +56,12 @@ func (b *Kernel) Execute(ctx context.Context, output io.Writer) error {
 func (b *Kernel) registerCommands() {
 	for _, command := range b.commands {
 		b.rootCommand.AddCommand(command)
+	}
+}
+
+func (b *Kernel) shutdownDB() {
+	if err := b.db.Close(); err != nil {
+		b.logger.Error("failed to close database", slog.Any("error", err))
 	}
 }
 

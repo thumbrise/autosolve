@@ -27,8 +27,8 @@ CREATE INDEX IF NOT EXISTS idx_users_login ON users (login);
 CREATE TABLE IF NOT EXISTS issues
 (
     id                INTEGER PRIMARY KEY AUTOINCREMENT,
-    created_at        DATETIME DATETIME NOT NULL,
-    updated_at        DATETIME DATETIME NOT NULL,
+    created_at        DATETIME          NOT NULL DEFAULT (datetime('now')),
+    updated_at        DATETIME          NOT NULL DEFAULT (datetime('now')),
     repository_id     INTEGER           NOT NULL,
     github_id         INTEGER           NOT NULL,
     number            INTEGER           NOT NULL,
