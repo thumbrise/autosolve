@@ -27,22 +27,22 @@ CREATE INDEX IF NOT EXISTS idx_users_login ON users (login);
 CREATE TABLE IF NOT EXISTS issues
 (
     id                INTEGER PRIMARY KEY AUTOINCREMENT,
-    created_at        DATETIME,
-    updated_at        DATETIME,
-    repository_id     INTEGER     NOT NULL,
-    github_id         INTEGER     NOT NULL,
-    number            INTEGER     NOT NULL,
-    title             TEXT,
-    body              TEXT,
-    state             VARCHAR(10) NOT NULL,
-    is_pull_request   BOOLEAN DEFAULT 0,
+    created_at        DATETIME DATETIME NOT NULL,
+    updated_at        DATETIME DATETIME NOT NULL,
+    repository_id     INTEGER           NOT NULL,
+    github_id         INTEGER           NOT NULL,
+    number            INTEGER           NOT NULL,
+    title             TEXT              NOT NULL DEFAULT '',
+    body              TEXT              NOT NULL DEFAULT '',
+    state             VARCHAR(10)       NOT NULL,
+    is_pull_request   BOOLEAN           NOT NULL DEFAULT 0,
     pr_url            TEXT,
     pr_html_url       TEXT,
     pr_diff_url       TEXT,
     pr_patch_url      TEXT,
-    github_created_at DATETIME    NOT NULL,
-    github_updated_at DATETIME    NOT NULL,
-    synced_at         DATETIME    NOT NULL
+    github_created_at DATETIME          NOT NULL,
+    github_updated_at DATETIME          NOT NULL,
+    synced_at         DATETIME          NOT NULL
 );
 CREATE UNIQUE INDEX IF NOT EXISTS idx_issues_github_id ON issues (github_id);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_repo_number ON issues (repository_id, number);

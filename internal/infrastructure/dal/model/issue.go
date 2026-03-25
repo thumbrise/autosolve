@@ -23,25 +23,28 @@ const (
 	IssueStateClosed = "closed"
 )
 
+//nolint:godox // schema reference
+// TODO(v1-epic): Record will be removed when all entities migrate to sqlc-generated models.
+
 type Issue struct {
 	Record
-	RepositoryID    uint64    `gorm:"not null;uniqueIndex:idx_repo_number"`
-	GithubID        int64     `gorm:"not null;uniqueIndex"`
-	Number          int       `gorm:"not null;uniqueIndex:idx_repo_number"`
-	Title           string    `gorm:"type:text"`
-	Body            string    `gorm:"type:text"`
-	State           string    `gorm:"type:varchar(10);not null;index"` // open/closed
-	IsPullRequest   bool      `gorm:"default:false;index"`
-	PRUrl           *string   `gorm:"type:text"`
-	PRHtmlUrl       *string   `gorm:"type:text"`
-	PRDiffUrl       *string   `gorm:"type:text"`
-	PRPatchUrl      *string   `gorm:"type:text"`
-	GithubCreatedAt time.Time `gorm:"not null"`
-	GithubUpdatedAt time.Time `gorm:"not null;index"`
-	SyncedAt        time.Time `gorm:"not null;index"`
+	RepositoryID    int64
+	GithubID        int64
+	Number          int64
+	Title           string
+	Body            string
+	State           string
+	IsPullRequest   bool
+	PRUrl           *string
+	PRHtmlUrl       *string
+	PRDiffUrl       *string
+	PRPatchUrl      *string
+	GithubCreatedAt time.Time
+	GithubUpdatedAt time.Time
+	SyncedAt        time.Time
 	// Relations
-	// Repository *Repository `gorm:"foreignKey:RepositoryID"`
-	Labels    []*Label   `gorm:"many2many:issue_labels;"`
-	Assignees []*User    `gorm:"many2many:issue_assignees;"`
-	Comments  []*Comment `gorm:"foreignKey:IssueID"`
+	Repository *Repository
+	Labels     []*Label
+	Assignees  []*User
+	Comments   []*Comment
 }

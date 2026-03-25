@@ -14,8 +14,11 @@
 
 package model
 
+//nolint:godox // schema reference
+// TODO(v1-epic): Record will be removed when all entities migrate to sqlc-generated models.
+
 type User struct {
 	Record
-	GithubID int64  `gorm:"not null;uniqueIndex"`
-	Login    string `gorm:"type:varchar(255);not null;index"`
+	GithubID int64
+	Login    string
 }

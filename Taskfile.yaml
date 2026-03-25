@@ -35,4 +35,5 @@ tasks:
     aliases:
       - gen
     cmds:
+      - go tool sqlc generate
       - go tool wire $(go list ./... | grep -v /test)

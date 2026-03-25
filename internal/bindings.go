@@ -31,7 +31,7 @@ var Bindings = wire.NewSet(
 	config.NewGithub,
 	config.NewDatabase,
 
-	database.NewGormDB,
+	database.NewDB,
 	database.NewMigrator,
 
 	github.NewClient,

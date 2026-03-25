@@ -16,15 +16,18 @@ package model
 
 import "time"
 
+//nolint:godox // schema reference
+// TODO(v1-epic): Record will be removed when all entities migrate to sqlc-generated models.
+
 type Comment struct {
 	Record
-	IssueID         uint64    `gorm:"not null;index"`
-	GithubID        int64     `gorm:"not null;uniqueIndex"`
-	Body            string    `gorm:"type:text"`
-	AuthorLogin     string    `gorm:"type:varchar(255)"`
-	AuthorGithubID  int64     `gorm:"index"`
-	GithubCreatedAt time.Time `gorm:"not null"`
-	GithubUpdatedAt time.Time `gorm:"not null;index"`
+	IssueID         uint64
+	GithubID        int64
+	Body            string
+	AuthorLogin     string
+	AuthorGithubID  int64
+	GithubCreatedAt time.Time
+	GithubUpdatedAt time.Time
 	// Relations
-	Issue *Issue `gorm:"foreignKey:IssueID"`
+	Issue *Issue
 }

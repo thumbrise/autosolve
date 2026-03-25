@@ -14,13 +14,16 @@
 
 package model
 
+//nolint:godox // schema reference
+// TODO(v1-epic): Record will be removed when all entities migrate to sqlc-generated models.
+
 type Label struct {
 	Record
-	RepositoryID uint64 `gorm:"not null;index"`
-	GithubID     int64  `gorm:"not null;uniqueIndex"`
-	Name         string `gorm:"type:varchar(255);not null"`
-	Color        string `gorm:"type:varchar(10)"`
-	Description  string `gorm:"type:text"`
+	RepositoryID uint64
+	GithubID     int64
+	Name         string
+	Color        string
+	Description  string
 	// Relations
-	Repository *Repository `gorm:"foreignKey:RepositoryID"`
+	Repository *Repository
 }

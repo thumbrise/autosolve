@@ -36,7 +36,7 @@ func InitializeKernel(contextContext context.Context, reader *config.Reader, log
 	if err != nil {
 		return nil, err
 	}
-	db, err := database.NewGormDB(logger, configDatabase, log)
+	db, err := database.NewDB(configDatabase)
 	if err != nil {
 		return nil, err
 	}

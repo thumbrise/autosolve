@@ -16,22 +16,22 @@ package repositories
 
 import (
 	"context"
+	"database/sql"
 	"log/slog"
 	"time"
 
-	"gorm.io/gorm"
-	"gorm.io/gorm/clause"
-
 	"github.com/thumbrise/autosolve/internal/infrastructure/dal/model"
+	"github.com/thumbrise/autosolve/internal/infrastructure/dal/sqlcgen"
 )
 
 type IssueRepository struct {
-	db     *gorm.DB
-	logger *slog.Logger
+	db      *sql.DB
+	queries *sqlcgen.Queries
+	logger  *slog.Logger
 }
 
-func NewIssueRepository(db *gorm.DB, logger *slog.Logger) *IssueRepository {
-	return &IssueRepository{db: db, logger: logger}
+func NewIssueRepository(db *sql.DB, logger *slog.Logger) *IssueRepository {
+	return &IssueRepository{db: db, queries: sqlcgen.New(db), logger: logger}
 }
 
 func (r *IssueRepository) UpsertMany(ctx context.Context, issues []*model.Issue) error {
@@ -41,41 +41,54 @@ func (r *IssueRepository) UpsertMany(ctx context.Context, issues []*model.Issue)
 
 	r.logger.DebugContext(ctx, "received issues for persistence", slog.Int("count", len(issues)))
 
-	err := r.db.WithContext(ctx).
-		Clauses(clause.OnConflict{
-			Columns: []clause.Column{{Name: "github_id"}},
-			// number is intentionally excluded — GitHub issue numbers are immutable.
-			DoUpdates: clause.AssignmentColumns([]string{
-				"title", "body", "state",
-				"is_pull_request", "pr_url", "pr_html_url", "pr_diff_url", "pr_patch_url",
-				"github_created_at", "github_updated_at",
-				"updated_at", "synced_at",
-			}),
-		}).
-		CreateInBatches(issues, len(issues)).Error
+	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
-		r.logger.ErrorContext(ctx, "failed to upsert issues", slog.Any("error", err))
-
 		return err
 	}
+	defer func(tx *sql.Tx) {
+		_ = tx.Rollback()
+	}(tx)
 
-	r.logger.DebugContext(ctx, "persisted issues", slog.Int("count", len(issues)))
+	qtx := r.queries.WithTx(tx)
+	for _, iss := range issues {
+		err := qtx.UpsertIssue(ctx, sqlcgen.UpsertIssueParams{
+			RepositoryID:    iss.RepositoryID,
+			GithubID:        iss.GithubID,
+			Number:          iss.Number,
+			Title:           iss.Title,
+			Body:            iss.Body,
+			State:           iss.State,
+			IsPullRequest:   iss.IsPullRequest,
+			PrUrl:           iss.PRUrl,
+			PrHtmlUrl:       (iss.PRHtmlUrl),
+			PrDiffUrl:       (iss.PRDiffUrl),
+			PrPatchUrl:      (iss.PRPatchUrl),
+			GithubCreatedAt: iss.GithubCreatedAt,
+			GithubUpdatedAt: iss.GithubUpdatedAt,
+			SyncedAt:        iss.SyncedAt,
+			CreatedAt:       sql.NullTime{Time: iss.CreatedAt, Valid: !iss.CreatedAt.IsZero()},
+			UpdatedAt:       sql.NullTime{Time: iss.UpdatedAt, Valid: !iss.UpdatedAt.IsZero()},
+		})
+		if err != nil {
+			r.logger.ErrorContext(ctx, "failed to upsert issue", slog.Any("error", err))
 
-	return nil
+			return err
+		}
+	}
+
+	return tx.Commit()
 }
 
 func (r *IssueRepository) GetLastUpdateTime(ctx context.Context) (time.Time, error) {
-	m := model.Issue{}
-
-	err := r.db.WithContext(ctx).Select("github_id", "github_updated_at").Order("github_updated_at desc").First(&m).Error
+	row, err := r.queries.GetLastUpdateTime(ctx)
 	if err != nil {
 		return time.Time{}, err
 	}
 
 	r.logger.DebugContext(ctx, "found last update time",
-		"last_update_time", m.GithubUpdatedAt,
-		"github_id", m.GithubID,
+		"last_update_time", row.GithubUpdatedAt,
+		"github_id", row.GithubID,
 	)
 
-	return m.GithubUpdatedAt, nil
+	return row.GithubUpdatedAt, nil
 }

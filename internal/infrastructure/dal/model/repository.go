@@ -14,10 +14,13 @@
 
 package model
 
+//nolint:godox // schema reference
+// TODO(v1-epic): Record will be removed when all entities migrate to sqlc-generated models.
+
 type Repository struct {
 	Record
-	Owner     string  `gorm:"type:varchar(255);not null;uniqueIndex:idx_owner_name"`
-	Name      string  `gorm:"type:varchar(255);not null;uniqueIndex:idx_owner_name"`
-	Enabled   bool    `gorm:"default:true;index"`
-	LastError *string `gorm:"type:text"`
+	Owner     string
+	Name      string
+	Enabled   bool
+	LastError *string
 }

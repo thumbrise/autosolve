@@ -54,7 +54,7 @@ func (p *Parser) Run(ctx context.Context) error {
 
 	lastUpdate, err := p.lastUpdate(ctx)
 	if err != nil {
-		// SQLLite GORM 1 connection pool. Always permanent
+		// SQLLite 1 connection pool. Always permanent
 		return fmt.Errorf("%w: %w", ErrReadLastUpdate, err)
 	}
 
@@ -110,7 +110,7 @@ func (p *Parser) mapIssueToModel(issue *github.Issue) *model.Issue {
 
 	result := &model.Issue{
 		GithubID:        issue.GetID(),
-		Number:          issue.GetNumber(),
+		Number:          int64(issue.GetNumber()),
 		Title:           issue.GetTitle(),
 		Body:            issue.GetBody(),
 		State:           state,
