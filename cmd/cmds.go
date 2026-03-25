@@ -26,6 +26,12 @@ var Bindings = wire.NewSet(
 	NewCommands,
 	cmds.NewSchedule,
 	cmds.NewMigrate,
+	cmds.NewMigrateUp,
+	cmds.NewMigrateUpFresh,
+	cmds.NewMigrateDown,
+	cmds.NewMigrateStatus,
+	cmds.NewMigrateCreate,
+	cmds.NewMigrateRedo,
 	cmds.NewTest,
 	cmds.NewTestSubTree,
 )
@@ -63,9 +69,24 @@ var Bindings = wire.NewSet(
 func NewCommands(
 	scheduleCMD *cmds.Schedule,
 	migrateCMD *cmds.Migrate,
+	migrateUp *cmds.MigrateUp,
+	migrateUpFresh *cmds.MigrateUpFresh,
+	migrateDown *cmds.MigrateDown,
+	migrateStatus *cmds.MigrateStatus,
+	migrateCreate *cmds.MigrateCreate,
+	migrateRedo *cmds.MigrateRedo,
 	testCMD *cmds.Test,
 	testSubTree *cmds.TestSubTree,
 ) []*cobra.Command {
+	migrateCMD.AddCommand(
+		migrateUp.Command,
+		migrateUpFresh.Command,
+		migrateDown.Command,
+		migrateStatus.Command,
+		migrateCreate.Command,
+		migrateRedo.Command,
+	)
+
 	testCMD.AddCommand(testSubTree.Command)
 
 	return []*cobra.Command{
