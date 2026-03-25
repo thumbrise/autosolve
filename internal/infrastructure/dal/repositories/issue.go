@@ -43,10 +43,12 @@ func (r *IssueRepository) UpsertMany(ctx context.Context, issues []*model.Issue)
 
 	err := r.db.WithContext(ctx).
 		Clauses(clause.OnConflict{
-			Columns: []clause.Column{{Name: "issue_id"}},
+			Columns: []clause.Column{{Name: "github_id"}},
+			// number is intentionally excluded — GitHub issue numbers are immutable.
 			DoUpdates: clause.AssignmentColumns([]string{
 				"title", "body", "state",
-				"github_created_at", "github_updated_at", "labels", "assignees",
+				"is_pull_request", "pr_url", "pr_html_url", "pr_diff_url", "pr_patch_url",
+				"github_created_at", "github_updated_at",
 				"updated_at", "synced_at",
 			}),
 		}).
@@ -65,14 +67,14 @@ func (r *IssueRepository) UpsertMany(ctx context.Context, issues []*model.Issue)
 func (r *IssueRepository) GetLastUpdateTime(ctx context.Context) (time.Time, error) {
 	m := model.Issue{}
 
-	err := r.db.WithContext(ctx).Select("issue_id", "github_updated_at").Order("github_updated_at desc").First(&m).Error
+	err := r.db.WithContext(ctx).Select("github_id", "github_updated_at").Order("github_updated_at desc").First(&m).Error
 	if err != nil {
 		return time.Time{}, err
 	}
 
 	r.logger.DebugContext(ctx, "found last update time",
 		"last_update_time", m.GithubUpdatedAt,
-		"issue_id", m.IssueID,
+		"github_id", m.GithubID,
 	)
 
 	return m.GithubUpdatedAt, nil

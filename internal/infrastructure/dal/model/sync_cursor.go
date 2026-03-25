@@ -12,15 +12,17 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package dal
+package model
 
-import "github.com/thumbrise/autosolve/internal/infrastructure/dal/model"
+import "time"
 
-var Models = []interface{}{
-	model.Repository{},
-	model.Issue{},
-	model.Comment{},
-	model.Label{},
-	model.User{},
-	model.SyncCursor{},
+type SyncCursor struct {
+	Record
+	RepositoryID   uint64    `gorm:"not null;uniqueIndex:idx_repo_resource"`
+	ResourceType   string    `gorm:"type:varchar(50);not null;uniqueIndex:idx_repo_resource"`
+	SinceUpdatedAt time.Time // ?since= value, max(github_updated_at) from last completed pass
+	NextPage       int       `gorm:"default:1"` // next page to fetch, resets to 1 after full pass
+	ETag           string    `gorm:"type:varchar(255)"`
+	// Relations
+	Repository *Repository `gorm:"foreignKey:RepositoryID"`
 }
