@@ -221,7 +221,7 @@ func NewMigrateStatus(migrator *database.Migrator) *MigrateStatus {
 
 func NewMigrateCreate(migrator *database.Migrator) *MigrateCreate {
 	return &MigrateCreate{&cobra.Command{
-		Use:   "create [name]",
+		Use:   "create <name>",
 		Short: "Create a new SQL migration file",
 		Long:  "Creates a new SQL migration file on disk.\nExample: go run . migrate create add_users",
 		Args:  cobra.ExactArgs(1),

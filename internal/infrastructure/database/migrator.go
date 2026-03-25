@@ -204,7 +204,7 @@ func (m *Migrator) Create(name string) (string, error) {
 	filename := fmt.Sprintf("%s_%s.sql", time.Now().Format("20060102150405"), name)
 	path := filepath.Join(migrationsDir, filename)
 
-	f, err := os.Create(path) //nolint:gosec // path is built from const migrationsDir + sanitized name
+	f, err := os.Create(path) //nolint:gosec // path is built from const migrationsDir + developer CLI input
 	if err != nil {
 		return "", fmt.Errorf("%w: create file: %w", ErrMigrationFailed, err)
 	}
