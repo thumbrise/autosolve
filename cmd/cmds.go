@@ -25,6 +25,7 @@ var Bindings = wire.NewSet(
 	NewRoot,
 	NewCommands,
 	cmds.NewSchedule,
+	cmds.NewMigrate,
 	cmds.NewTest,
 	cmds.NewTestSubTree,
 )
@@ -61,6 +62,7 @@ var Bindings = wire.NewSet(
 //   - Parameter here but missing in Bindings → "no provider for"
 func NewCommands(
 	scheduleCMD *cmds.Schedule,
+	migrateCMD *cmds.Migrate,
 	testCMD *cmds.Test,
 	testSubTree *cmds.TestSubTree,
 ) []*cobra.Command {
@@ -68,6 +70,7 @@ func NewCommands(
 
 	return []*cobra.Command{
 		scheduleCMD.Command,
+		migrateCMD.Command,
 		testCMD.Command,
 	}
 }

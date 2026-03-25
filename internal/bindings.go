@@ -22,7 +22,6 @@ import (
 	"github.com/thumbrise/autosolve/internal/application/worker/workers"
 	"github.com/thumbrise/autosolve/internal/config"
 	"github.com/thumbrise/autosolve/internal/domain/issue"
-	"github.com/thumbrise/autosolve/internal/infrastructure/dal"
 	"github.com/thumbrise/autosolve/internal/infrastructure/dal/repositories"
 	"github.com/thumbrise/autosolve/internal/infrastructure/database"
 	"github.com/thumbrise/autosolve/internal/infrastructure/github"
@@ -33,10 +32,7 @@ var Bindings = wire.NewSet(
 	config.NewDatabase,
 
 	database.NewGormDB,
-	wire.NewSet(
-		database.NewMigrator,
-		wire.Value(dal.Models),
-	),
+	database.NewMigrator,
 
 	github.NewClient,
 	github.NewGithubClient,

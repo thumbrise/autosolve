@@ -16,45 +16,36 @@ package bootstrap
 
 import (
 	"context"
-	"errors"
-	"fmt"
+	"io"
 	"log/slog"
 	"time"
 
 	"github.com/spf13/cobra"
 
 	"github.com/thumbrise/autosolve/cmd"
-	"github.com/thumbrise/autosolve/internal/infrastructure/database"
 	"github.com/thumbrise/autosolve/internal/infrastructure/telemetry"
 )
 
 const envPrefix = "AUTOSOLVE"
-
-var ErrDatabaseMigrate = errors.New("cannot migrate database")
 
 type ShutdownFunc func(ctx context.Context) error
 
 type Kernel struct {
 	rootCommand *cmd.Root
 	commands    []*cobra.Command
-	migrator    *database.Migrator
 	telemetry   *telemetry.Telemetry
 	logger      *slog.Logger
 }
 
-func NewKernel(commands []*cobra.Command, logger *slog.Logger, migrator *database.Migrator, rootCommand *cmd.Root, telemetry *telemetry.Telemetry) *Kernel {
-	return &Kernel{commands: commands, logger: logger, migrator: migrator, rootCommand: rootCommand, telemetry: telemetry}
+func NewKernel(commands []*cobra.Command, logger *slog.Logger, rootCommand *cmd.Root, telemetry *telemetry.Telemetry) *Kernel {
+	return &Kernel{commands: commands, logger: logger, rootCommand: rootCommand, telemetry: telemetry}
 }
 
-func (b *Kernel) Execute(ctx context.Context) error {
+func (b *Kernel) Execute(ctx context.Context, output io.Writer) error {
 	b.registerCommands()
+	b.rootCommand.SetOut(output)
 
 	defer b.shutdown(ctx, 5*time.Second, b.telemetry.Shutdown)
-
-	err := b.migrator.Migrate(ctx)
-	if err != nil {
-		return fmt.Errorf("%w: %w", ErrDatabaseMigrate, err)
-	}
 
 	return b.rootCommand.ExecuteContext(ctx)
 }
