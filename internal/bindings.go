@@ -23,6 +23,7 @@ import (
 	"github.com/thumbrise/autosolve/internal/config"
 	"github.com/thumbrise/autosolve/internal/domain/issue"
 	"github.com/thumbrise/autosolve/internal/infrastructure/dal/repositories"
+	"github.com/thumbrise/autosolve/internal/infrastructure/dal/sqlcgen"
 	"github.com/thumbrise/autosolve/internal/infrastructure/database"
 	"github.com/thumbrise/autosolve/internal/infrastructure/github"
 )
@@ -33,6 +34,7 @@ var Bindings = wire.NewSet(
 
 	database.NewDB,
 	database.NewMigrator,
+	sqlcgen.New,
 
 	github.NewClient,
 	github.NewGithubClient,

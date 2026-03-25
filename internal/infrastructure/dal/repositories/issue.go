@@ -30,8 +30,8 @@ type IssueRepository struct {
 	logger  *slog.Logger
 }
 
-func NewIssueRepository(db *sql.DB, logger *slog.Logger) *IssueRepository {
-	return &IssueRepository{db: db, queries: sqlcgen.New(db), logger: logger}
+func NewIssueRepository(db *sql.DB, queries *sqlcgen.Queries, logger *slog.Logger) *IssueRepository {
+	return &IssueRepository{db: db, queries: queries, logger: logger}
 }
 
 func (r *IssueRepository) UpsertMany(ctx context.Context, issues []*model.Issue) error {
@@ -49,9 +49,8 @@ func (r *IssueRepository) UpsertMany(ctx context.Context, issues []*model.Issue)
 		_ = tx.Rollback()
 	}(tx)
 
-	qtx := r.queries.WithTx(tx)
 	for _, iss := range issues {
-		err := qtx.UpsertIssue(ctx, sqlcgen.UpsertIssueParams{
+		err := r.queries.UpsertIssue(ctx, tx, sqlcgen.UpsertIssueParams{
 			RepositoryID:    iss.RepositoryID,
 			GithubID:        iss.GithubID,
 			Number:          iss.Number,
@@ -78,7 +77,7 @@ func (r *IssueRepository) UpsertMany(ctx context.Context, issues []*model.Issue)
 }
 
 func (r *IssueRepository) GetLastUpdateTime(ctx context.Context) (time.Time, error) {
-	row, err := r.queries.GetLastUpdateTime(ctx)
+	row, err := r.queries.GetLastUpdateTime(ctx, r.db)
 	if err != nil {
 		return time.Time{}, err
 	}

@@ -17,6 +17,7 @@ import (
 	"github.com/thumbrise/autosolve/internal/domain/issue"
 	"github.com/thumbrise/autosolve/internal/infrastructure/config"
 	"github.com/thumbrise/autosolve/internal/infrastructure/dal/repositories"
+	"github.com/thumbrise/autosolve/internal/infrastructure/dal/sqlcgen"
 	"github.com/thumbrise/autosolve/internal/infrastructure/database"
 	"github.com/thumbrise/autosolve/internal/infrastructure/github"
 	"github.com/thumbrise/autosolve/internal/infrastructure/telemetry"
@@ -40,7 +41,8 @@ func InitializeKernel(contextContext context.Context, reader *config.Reader, log
 	if err != nil {
 		return nil, err
 	}
-	issueRepository := repositories.NewIssueRepository(db, logger)
+	queries := sqlcgen.New()
+	issueRepository := repositories.NewIssueRepository(db, queries, logger)
 	parser := issue.NewParser(configGithub, githubClient, issueRepository, logger)
 	issueUpdatesPoller := workers.NewIssueUpdatesPoller(configGithub, logger, parser)
 	v := worker.NewWorkers(issueUpdatesPoller)

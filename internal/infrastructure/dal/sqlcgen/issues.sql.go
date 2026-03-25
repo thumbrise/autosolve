@@ -36,8 +36,8 @@ type GetLastUpdateTimeRow struct {
 	GithubUpdatedAt time.Time
 }
 
-func (q *Queries) GetLastUpdateTime(ctx context.Context) (GetLastUpdateTimeRow, error) {
-	row := q.db.QueryRowContext(ctx, getLastUpdateTime)
+func (q *Queries) GetLastUpdateTime(ctx context.Context, db DBTX) (GetLastUpdateTimeRow, error) {
+	row := db.QueryRowContext(ctx, getLastUpdateTime)
 	var i GetLastUpdateTimeRow
 	err := row.Scan(&i.GithubID, &i.GithubUpdatedAt)
 	return i, err
@@ -81,8 +81,8 @@ type UpsertIssueParams struct {
 	SyncedAt        time.Time
 }
 
-func (q *Queries) UpsertIssue(ctx context.Context, arg UpsertIssueParams) error {
-	_, err := q.db.ExecContext(ctx, upsertIssue,
+func (q *Queries) UpsertIssue(ctx context.Context, db DBTX, arg UpsertIssueParams) error {
+	_, err := db.ExecContext(ctx, upsertIssue,
 		arg.RepositoryID,
 		arg.GithubID,
 		arg.Number,
