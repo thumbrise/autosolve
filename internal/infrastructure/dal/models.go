@@ -18,9 +18,9 @@ import "github.com/thumbrise/autosolve/internal/infrastructure/dal/model"
 
 var Models = []interface{}{
 	model.Repository{},
+	model.User{},
 	model.Issue{},
 	model.Comment{},
 	model.Label{},
-	model.User{},
 	model.SyncCursor{},
 }
