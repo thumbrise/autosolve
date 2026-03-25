@@ -1,2 +1,4 @@
 [sqlfluff]
 dialect = sqlite
+max_line_length = 120
+exclude_rules = layout.spacing, layout.end_of_file
