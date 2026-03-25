@@ -60,14 +60,12 @@ func (r *IssueRepository) UpsertMany(ctx context.Context, issues []*model.Issue)
 			State:           iss.State,
 			IsPullRequest:   iss.IsPullRequest,
 			PrUrl:           iss.PRUrl,
-			PrHtmlUrl:       (iss.PRHtmlUrl),
-			PrDiffUrl:       (iss.PRDiffUrl),
-			PrPatchUrl:      (iss.PRPatchUrl),
+			PrHtmlUrl:       iss.PRHtmlUrl,
+			PrDiffUrl:       iss.PRDiffUrl,
+			PrPatchUrl:      iss.PRPatchUrl,
 			GithubCreatedAt: iss.GithubCreatedAt,
 			GithubUpdatedAt: iss.GithubUpdatedAt,
 			SyncedAt:        iss.SyncedAt,
-			CreatedAt:       sql.NullTime{Time: iss.CreatedAt, Valid: !iss.CreatedAt.IsZero()},
-			UpdatedAt:       sql.NullTime{Time: iss.UpdatedAt, Valid: !iss.UpdatedAt.IsZero()},
 		})
 		if err != nil {
 			r.logger.ErrorContext(ctx, "failed to upsert issue", slog.Any("error", err))

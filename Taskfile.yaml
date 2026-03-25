@@ -13,6 +13,12 @@ tasks:
       - golangci-lint run
       - go tool license-eye dependency check
       - go tool license-eye header check
+      - task: lint:sql
+
+  lint:sql:
+    desc: Lint SQL migrations
+    cmds:
+      - which sqlfluff > /dev/null 2>&1 && sqlfluff lint internal/infrastructure/database/migrations/ --dialect sqlite || echo "sqlfluff not found, skipping SQL lint (pip install sqlfluff)"
 
   test:
     desc: Run tests
