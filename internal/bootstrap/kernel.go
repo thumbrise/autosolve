@@ -48,7 +48,7 @@ func (b *Kernel) Execute(ctx context.Context, output io.Writer) error {
 	b.rootCommand.SetOut(output)
 
 	defer b.shutdown(ctx, 5*time.Second, b.telemetry.Shutdown)
-	defer b.shutdownDB()
+	defer b.shutdownDB(ctx)
 
 	return b.rootCommand.ExecuteContext(ctx)
 }
@@ -59,9 +59,9 @@ func (b *Kernel) registerCommands() {
 	}
 }
 
-func (b *Kernel) shutdownDB() {
+func (b *Kernel) shutdownDB(ctx context.Context) {
 	if err := b.db.Close(); err != nil {
-		b.logger.Error("failed to close database", slog.Any("error", err))
+		b.logger.ErrorContext(ctx, "failed to close database", slog.Any("error", err))
 	}
 }
 
