@@ -1,0 +1,11 @@
+version: "2"
+sql:
+  - engine: "sqlite"
+    queries: "internal/infrastructure/dal/queries/"
+    schema: "internal/infrastructure/database/migrations/"
+    gen:
+      go:
+        package: "sqlcgen"
+        out: "internal/infrastructure/dal/sqlcgen"
+        emit_empty_slices: true
+        emit_pointers_for_null_types: true

@@ -16,6 +16,7 @@ package database
 
 import (
 	"context"
+	"database/sql"
 	"embed"
 	"errors"
 	"fmt"
@@ -27,7 +28,6 @@ import (
 	"time"
 
 	"github.com/pressly/goose/v3"
-	"gorm.io/gorm"
 )
 
 //go:embed migrations/*.sql
@@ -49,18 +49,13 @@ type Migrator struct {
 	logger   *slog.Logger
 }
 
-func NewMigrator(db *gorm.DB, logger *slog.Logger) (*Migrator, error) {
-	sqlDB, err := db.DB()
-	if err != nil {
-		return nil, fmt.Errorf("%w: get sql.DB: %w", ErrMigrationFailed, err)
-	}
-
+func NewMigrator(db *sql.DB, logger *slog.Logger) (*Migrator, error) {
 	migrations, err := fs.Sub(embeddedMigrations, "migrations")
 	if err != nil {
 		return nil, fmt.Errorf("%w: sub fs: %w", ErrMigrationFailed, err)
 	}
 
-	provider, err := goose.NewProvider(goose.DialectSQLite3, sqlDB, migrations)
+	provider, err := goose.NewProvider(goose.DialectSQLite3, db, migrations)
 	if err != nil {
 		return nil, fmt.Errorf("%w: create provider: %w", ErrMigrationFailed, err)
 	}

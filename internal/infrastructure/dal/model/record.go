@@ -16,8 +16,11 @@ package model
 
 import "time"
 
+//nolint:godox // schema reference
+// TODO(v1-epic): Record will be removed when all entities migrate to sqlc-generated models.
+
 type Record struct {
-	ID        uint64 `gorm:"primaryKey;autoIncrement"`
+	ID        int64
 	CreatedAt time.Time
 	UpdatedAt time.Time
 }

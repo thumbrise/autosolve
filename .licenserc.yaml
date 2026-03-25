@@ -34,7 +34,8 @@ header:
 dependency:
   files:
     - go.mod
-
   threshold: 75
   require_fsf_free: false
   require_osi_approved: false
+  excludes:
+    - name: github.com/go-sql-driver/mysql
