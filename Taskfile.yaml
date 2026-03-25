@@ -25,6 +25,11 @@ tasks:
     cmds:
       - go tool license-eye header fix
 
+  migrate:create:
+    desc: Create a new SQL migration
+    cmds:
+      - go run . migrate create {{.CLI_ARGS}}
+
   generate:
     desc: Generate all needed
     aliases:

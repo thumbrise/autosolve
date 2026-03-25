@@ -16,7 +16,6 @@ import (
 	config2 "github.com/thumbrise/autosolve/internal/config"
 	"github.com/thumbrise/autosolve/internal/domain/issue"
 	"github.com/thumbrise/autosolve/internal/infrastructure/config"
-	"github.com/thumbrise/autosolve/internal/infrastructure/dal"
 	"github.com/thumbrise/autosolve/internal/infrastructure/dal/repositories"
 	"github.com/thumbrise/autosolve/internal/infrastructure/database"
 	"github.com/thumbrise/autosolve/internal/infrastructure/github"
@@ -47,16 +46,15 @@ func InitializeKernel(contextContext context.Context, reader *config.Reader, log
 	v := worker.NewWorkers(issueUpdatesPoller)
 	scheduler := application.NewScheduler(v, logger)
 	schedule := cmds.NewSchedule(scheduler)
+	migrator, err := database.NewMigrator(db, logger)
+	if err != nil {
+		return nil, err
+	}
 	test := cmds.NewTest(logger)
 	testSubTree := cmds.NewTestSubTree(logger)
-	v2 := cmd.NewCommands(schedule, test, testSubTree)
-	v3 := _wireValue
-	migrator := database.NewMigrator(db, logger, v3)
+	migrate := cmds.NewMigrate(migrator)
+	v2 := cmd.NewCommands(schedule, migrate, test, testSubTree)
 	root := cmd.NewRoot()
-	kernel := NewKernel(v2, logger, migrator, root, telemetryTelemetry)
+	kernel := NewKernel(v2, logger, root, telemetryTelemetry)
 	return kernel, nil
 }
-
-var (
-	_wireValue = dal.Models
-)

@@ -15,6 +15,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"log"
@@ -56,7 +57,16 @@ func run(ctx context.Context) error {
 		return fmt.Errorf("failed initialize kernel: %w", err)
 	}
 
-	err = kernel.Execute(ctx)
+	var output bytes.Buffer
+
+	err = kernel.Execute(ctx, &output)
+
+	// Flush buffered command output after all shutdown hooks completed.
+	// This guarantees logs and command output never interleave.
+	if output.Len() > 0 {
+		fmt.Print(output.String())
+	}
+
 	if err != nil {
 		return fmt.Errorf("execution failed: %w", err)
 	}
