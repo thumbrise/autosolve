@@ -36,7 +36,7 @@ func InitializeKernel(contextContext context.Context, reader *config.Reader, log
 	if err != nil {
 		return nil, err
 	}
-	db, err := database.NewDB(configDatabase)
+	db, err := database.NewDB(contextContext, configDatabase)
 	if err != nil {
 		return nil, err
 	}

@@ -20,13 +20,13 @@ import (
 	"strings"
 )
 
-type SQLiteOptions struct {
+type Options struct {
 	Path   string
 	Params map[string]string
 	Pragma map[string]string
 }
 
-func (o SQLiteOptions) DSN() string {
+func (o Options) DSN() string {
 	parts := make([]string, 0, len(o.Params)+len(o.Pragma))
 	for _, k := range sorted(o.Params) {
 		parts = append(parts, fmt.Sprintf("%s=%s", k, o.Params[k]))

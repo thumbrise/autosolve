@@ -15,6 +15,7 @@
 package database
 
 import (
+	"context"
 	"database/sql"
 
 	"github.com/XSAM/otelsql"
@@ -24,8 +25,8 @@ import (
 	"github.com/thumbrise/autosolve/internal/config"
 )
 
-func NewDB(cfg *config.Database) (*sql.DB, error) {
-	options := SQLiteOptions{
+func NewDB(ctx context.Context, cfg *config.Database) (*sql.DB, error) {
+	options := Options{
 		Path: cfg.SQLitePath,
 		Pragma: map[string]string{
 			"journal_mode": "WAL",
@@ -38,6 +39,12 @@ func NewDB(cfg *config.Database) (*sql.DB, error) {
 		otelsql.WithAttributes(semconv.DBSystemSqlite),
 	)
 	if err != nil {
+		return nil, err
+	}
+
+	if err = db.PingContext(ctx); err != nil {
+		_ = db.Close()
+
 		return nil, err
 	}
 
