@@ -37,8 +37,8 @@ type Comment struct {
 
 type Issue struct {
 	ID              int64
-	CreatedAt       interface{}
-	UpdatedAt       interface{}
+	CreatedAt       time.Time
+	UpdatedAt       time.Time
 	RepositoryID    int64
 	GithubID        int64
 	Number          int64

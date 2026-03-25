@@ -18,18 +18,22 @@ tasks:
   lint:sql:
     desc: Lint SQL migrations
     cmds:
-      - which sqlfluff > /dev/null 2>&1 && sqlfluff lint internal/infrastructure/database/migrations/ --dialect sqlite || echo "sqlfluff not found, skipping SQL lint (pip install sqlfluff)"
+      - if which sqlfluff > /dev/null 2>&1; then sqlfluff lint internal/infrastructure/database/migrations/ --config .sqlfluff --dialect sqlite; else echo "sqlfluff not found, skipping SQL lint (pipx install sqlfluff)"; fi
+      - |
+        MATCHES=$(grep -rn 'interface{}' internal/infrastructure/dal/sqlcgen/ --exclude=db.go || true)
+        if [ -n "$MATCHES" ]; then
+          echo "ERROR: sqlc generated interface{} fields — check column types in migrations:"
+          echo "$MATCHES"
+          exit 1
+        else
+          echo "sqlcgen types OK"
+        fi
 
   test:
     desc: Run tests
     cmds:
       - go test ./... -v -tags=test
       - go test ./... -v -tags=test -run=NONE -bench=. -benchmem
-
-  license:
-    desc: Add license headers to files
-    cmds:
-      - go tool license-eye header fix
 
   migrate:create:
     desc: Create a new SQL migration
@@ -43,3 +47,4 @@ tasks:
     cmds:
       - go tool sqlc generate
       - go tool wire $(go list ./... | grep -v /test)
+      - go tool license-eye header fix
