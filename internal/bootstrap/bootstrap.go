@@ -50,11 +50,11 @@ func Bootstrap(ctx context.Context) (*Boot, error) {
 		return nil, fmt.Errorf("%w: %w", ErrBootstrapConfig, err)
 	}
 
-	logger := b.bootstrapLogger(ctx, cfgOtel, cfgLog)
+	baseLogger, logger := b.bootstrapLogger(ctx, cfgOtel, cfgLog)
 
 	reader.SetLogger(logger)
 
-	tel, err := b.bootstrapTelemetry(ctx, cfgOtel, logger)
+	tel, err := b.bootstrapTelemetry(ctx, cfgOtel, baseLogger)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %w", ErrBootstrapTelemetry, err)
 	}
@@ -68,16 +68,18 @@ func Bootstrap(ctx context.Context) (*Boot, error) {
 	return b, nil
 }
 
-func (b *Boot) bootstrapLogger(ctx context.Context, cfgOtel *config.Otel, cfgLog *config.Log) *slog.Logger {
-	result := loggerinfra.WithConfig(ctx, *cfgLog)
+//nolint:nonamedreturns // 2 loggers
+func (b *Boot) bootstrapLogger(ctx context.Context, cfgOtel *config.Otel, cfgLog *config.Log) (base *slog.Logger, full *slog.Logger) {
+	base = loggerinfra.WithConfig(ctx, *cfgLog)
 
+	full = base
 	if cfgOtel.Logs.Exporter != "none" && cfgOtel.Logs.Exporter != "" && !cfgOtel.SDKDisabled {
-		result = loggerinfra.WithOtelBridge(result, cfgOtel.ServiceName)
+		full = loggerinfra.WithOtelBridge(base, cfgOtel.ServiceName)
 	}
 
-	slog.SetDefault(result)
+	slog.SetDefault(full)
 
-	return result
+	return base, full
 }
 
 func (b *Boot) bootstrapConfig(ctx context.Context, logger *slog.Logger) (*configinfra.Reader, *config.Log, *config.Otel, error) {
