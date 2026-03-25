@@ -25,10 +25,9 @@ const (
 
 type Issue struct {
 	Record
-	// RepositoryID    uint64    `gorm:"not null;index"`
-	RepositoryID    uint64    `gorm:"index"`
+	RepositoryID    uint64    `gorm:"not null;uniqueIndex:idx_repo_number"`
 	GithubID        int64     `gorm:"not null;uniqueIndex"`
-	Number          int       `gorm:"not null;index"`
+	Number          int       `gorm:"not null;uniqueIndex:idx_repo_number"`
 	Title           string    `gorm:"type:text"`
 	Body            string    `gorm:"type:text"`
 	State           string    `gorm:"type:varchar(10);not null;index"` // open/closed
