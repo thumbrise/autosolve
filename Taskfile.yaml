@@ -13,6 +13,7 @@ tasks:
       - golangci-lint run
       - go tool license-eye dependency check
       - go tool license-eye header check
+      - go tool govulncheck ./...
       - task: lint:sql
 
   lint:sql:
