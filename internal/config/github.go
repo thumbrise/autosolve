@@ -27,8 +27,8 @@ type Repository struct {
 }
 
 type Github struct {
-	Token             string       `masq:"secret"            validate:"required"`
-	Repositories      []Repository `validate:"required,dive"`
+	Token             string        `masq:"secret"            validate:"required"`
+	Repositories      []Repository  `validate:"required,dive"`
 	HttpClientTimeout time.Duration `validate:"required"`
 	RateLimit         struct {
 		MinInterval time.Duration `validate:"required"`

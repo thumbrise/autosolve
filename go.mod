@@ -1,6 +1,6 @@
 module github.com/thumbrise/autosolve
 
-go 1.25.0
+go 1.26
 
 require (
 	github.com/XSAM/otelsql v0.41.0
@@ -126,8 +126,10 @@ require (
 	golang.org/x/net v0.51.0 // indirect
 	golang.org/x/oauth2 v0.35.0 // indirect
 	golang.org/x/sys v0.42.0 // indirect
+	golang.org/x/telemetry v0.0.0-20260209163413-e7419c687ee4 // indirect
 	golang.org/x/text v0.35.0 // indirect
 	golang.org/x/tools v0.42.0 // indirect
+	golang.org/x/vuln v1.1.4 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20260226221140-a57be14db171 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260226221140-a57be14db171 // indirect
 	google.golang.org/grpc v1.79.2 // indirect
@@ -144,4 +146,5 @@ tool (
 	github.com/apache/skywalking-eyes/cmd/license-eye
 	github.com/google/wire/cmd/wire
 	github.com/sqlc-dev/sqlc/cmd/sqlc
+	golang.org/x/vuln/cmd/govulncheck
 )
