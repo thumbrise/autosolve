@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package issue
+package workers
 
 import (
 	"context"
@@ -24,10 +24,10 @@ import (
 	"github.com/google/go-github/v84/github"
 
 	"github.com/thumbrise/autosolve/internal/config"
+	"github.com/thumbrise/autosolve/internal/domain/entities"
 	"github.com/thumbrise/autosolve/internal/domain/spec"
 	"github.com/thumbrise/autosolve/internal/domain/spec/tenants"
 	"github.com/thumbrise/autosolve/internal/infrastructure/dal"
-	"github.com/thumbrise/autosolve/internal/infrastructure/dal/model"
 	"github.com/thumbrise/autosolve/internal/infrastructure/dal/repositories"
 	githubinfra "github.com/thumbrise/autosolve/internal/infrastructure/github"
 	"github.com/thumbrise/autosolve/pkg/httperr"
@@ -41,32 +41,32 @@ var (
 	ErrReadLastUpdate = errors.New("read last update")
 )
 
-// Parser fetches and stores issues for a repository.
+// IssuePoller fetches and stores issues for a repository.
 // Stateless per repository — owner, repo and repositoryID are received
-// via RepoTenant at each invocation.
+// via RepositoryTenant at each invocation.
 // Implements application.Worker via TaskSpec().
-type Parser struct {
+type IssuePoller struct {
 	githubClient    *githubinfra.Client
 	logger          *slog.Logger
 	issueRepository *repositories.IssueRepository
 	cfg             *config.Github
 }
 
-func NewParser(cfg *config.Github, githubClient *githubinfra.Client, issueRepository *repositories.IssueRepository, logger *slog.Logger) *Parser {
-	return &Parser{cfg: cfg, githubClient: githubClient, issueRepository: issueRepository, logger: logger}
+func NewIssuePoller(cfg *config.Github, githubClient *githubinfra.Client, issueRepository *repositories.IssueRepository, logger *slog.Logger) *IssuePoller {
+	return &IssuePoller{cfg: cfg, githubClient: githubClient, issueRepository: issueRepository, logger: logger}
 }
 
 // TaskSpec returns a WorkerSpec for polling issues.
-func (p *Parser) TaskSpec() spec.WorkerSpec {
+func (p *IssuePoller) TaskSpec() spec.WorkerSpec {
 	return spec.WorkerSpec{
-		Resource:   "issues",
+		Resource:   "issue-poller",
 		Interval:   p.cfg.Issues.ParseInterval,
 		Transients: httperr.TransientErrors(),
 		Work:       p.Run,
 	}
 }
 
-func (p *Parser) Run(ctx context.Context, tenant tenants.RepoTenant) error {
+func (p *IssuePoller) Run(ctx context.Context, tenant tenants.RepositoryTenant) error {
 	p.logger.DebugContext(ctx, "starting request to list issues",
 		slog.String("owner", tenant.Owner),
 		slog.String("name", tenant.Name),
@@ -111,8 +111,8 @@ func (p *Parser) Run(ctx context.Context, tenant tenants.RepoTenant) error {
 	return nil
 }
 
-func (p *Parser) store(ctx context.Context, repositoryID int64, issues []*github.Issue) error {
-	models := make([]*model.Issue, 0, len(issues))
+func (p *IssuePoller) store(ctx context.Context, repositoryID int64, issues []*github.Issue) error {
+	models := make([]*entities.Issue, 0, len(issues))
 	for _, issue := range issues {
 		models = append(models, p.mapIssueToModel(repositoryID, issue))
 	}
@@ -120,15 +120,15 @@ func (p *Parser) store(ctx context.Context, repositoryID int64, issues []*github
 	return p.issueRepository.UpsertMany(ctx, models)
 }
 
-func (p *Parser) mapIssueToModel(repositoryID int64, issue *github.Issue) *model.Issue {
-	state := model.IssueStateOpen
+func (p *IssuePoller) mapIssueToModel(repositoryID int64, issue *github.Issue) *entities.Issue {
+	state := entities.IssueStateOpen
 	if issue.GetState() == "closed" {
-		state = model.IssueStateClosed
+		state = entities.IssueStateClosed
 	}
 
 	now := time.Now()
 
-	result := &model.Issue{
+	result := &entities.Issue{
 		RepositoryID:    repositoryID,
 		GithubID:        issue.GetID(),
 		Number:          int64(issue.GetNumber()),
@@ -151,7 +151,7 @@ func (p *Parser) mapIssueToModel(repositoryID int64, issue *github.Issue) *model
 	return result
 }
 
-func (p *Parser) lastUpdate(ctx context.Context, repositoryID int64) (time.Time, error) {
+func (p *IssuePoller) lastUpdate(ctx context.Context, repositoryID int64) (time.Time, error) {
 	res, err := p.issueRepository.GetLastUpdateTime(ctx, repositoryID)
 	if err != nil {
 		if dal.IsNotFound(err) {
@@ -172,7 +172,7 @@ func (p *Parser) lastUpdate(ctx context.Context, repositoryID int64) (time.Time,
 // If err is *github.RateLimitError or *github.AbuseRateLimitError (with RetryAfter set) then returns true after sleeping.
 // If err is *github.AbuseRateLimitError without RetryAfter, returns false to let the caller handle retry via exponential backoff.
 // For all other errors, returns false and you should handle original error.
-func (p *Parser) adaptRateLimit(ctx context.Context, err error) bool {
+func (p *IssuePoller) adaptRateLimit(ctx context.Context, err error) bool {
 	var (
 		wait     time.Duration
 		rlErr    *github.RateLimitError
@@ -210,7 +210,7 @@ func (p *Parser) adaptRateLimit(ctx context.Context, err error) bool {
 // adaptPollingInterval adjusts the polling frequency based on data availability.
 // Called when a successful fetch returns zero issues, indicating a quiet period.
 // Reduces GitHub API load by increasing the interval between polls.
-func (p *Parser) adaptPollingInterval(_ context.Context) {
+func (p *IssuePoller) adaptPollingInterval(_ context.Context) {
 	//nolint:godox // noop: will be implemented when adaptive polling is prioritized in https://github.com/thumbrise/autosolve/issues/53
 	// TODO: implement exponential backoff on empty responses, reset to base interval when data appears.
 }

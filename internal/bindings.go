@@ -19,8 +19,8 @@ import (
 
 	"github.com/thumbrise/autosolve/internal/application"
 	"github.com/thumbrise/autosolve/internal/config"
-	"github.com/thumbrise/autosolve/internal/domain/issue"
-	"github.com/thumbrise/autosolve/internal/domain/repository"
+	"github.com/thumbrise/autosolve/internal/domain/spec/preflights"
+	"github.com/thumbrise/autosolve/internal/domain/spec/workers"
 	"github.com/thumbrise/autosolve/internal/infrastructure/dal/repositories"
 	"github.com/thumbrise/autosolve/internal/infrastructure/dal/sqlcgen"
 	"github.com/thumbrise/autosolve/internal/infrastructure/database"
@@ -44,8 +44,8 @@ var Bindings = wire.NewSet(
 	application.NewPreflights,
 	application.NewWorkers,
 
-	repository.NewValidator,
-	issue.NewParser,
+	preflights.NewRepositoryValidator,
+	workers.NewIssuePoller,
 
 	repositories.NewIssueRepository,
 	repositories.NewRepositoryRepository,

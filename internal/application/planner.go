@@ -75,7 +75,7 @@ func (p *Planner) Preflights() []PreflightUnit {
 				Repo:     r,
 				Rules:    p.buildRules(s.Transients),
 				Work: func(ctx context.Context) error {
-					return s.Work(ctx, tenants.RepoTenant{Owner: r.Owner, Name: r.Name})
+					return s.Work(ctx, tenants.RepositoryTenant{Owner: r.Owner, Name: r.Name})
 				},
 			})
 		}
@@ -112,7 +112,7 @@ func (p *Planner) Workers() []WorkerUnit {
 						repoID = id
 					}
 
-					return s.Work(ctx, tenants.RepoTenant{Owner: r.Owner, Name: r.Name, RepoID: repoID})
+					return s.Work(ctx, tenants.RepositoryTenant{Owner: r.Owner, Name: r.Name, RepoID: repoID})
 				},
 			})
 		}
