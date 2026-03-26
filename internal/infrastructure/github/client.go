@@ -25,10 +25,10 @@ import (
 	"github.com/thumbrise/autosolve/internal/config"
 )
 
-func NewGithubClient(cfg *config.Github) *github.Client {
+func NewGithubClient(cfg *config.Github, limiter *RateLimiter) *github.Client {
 	httpClient := &http.Client{
-		Transport: http.DefaultTransport,
-		Timeout:   cfg.Issues.HttpClientTimeout,
+		Transport: newRateLimitedTransport(http.DefaultTransport, limiter),
+		Timeout:   cfg.HttpClientTimeout,
 	}
 
 	return github.NewClient(httpClient).WithAuthToken(cfg.Token)
@@ -36,18 +36,22 @@ func NewGithubClient(cfg *config.Github) *github.Client {
 
 type Client struct {
 	client *github.Client
-	cfg    *config.Github
 	logger *slog.Logger
 }
 
-func NewClient(cfg *config.Github, client *github.Client, logger *slog.Logger) *Client {
-	return &Client{cfg: cfg, client: client, logger: logger}
+func NewClient(client *github.Client, logger *slog.Logger) *Client {
+	return &Client{client: client, logger: logger}
 }
 
-// GetMostUpdatedIssues fetches open issues from the configured repository,
+// GetMostUpdatedIssues fetches open issues from the given repository,
 // sorted by update time (oldest first).
 //
+// The client is stateless per repository — owner and repo are explicit parameters.
+// Rate limiting is handled transparently by the underlying http.RoundTripper.
+//
 // Parameters:
+//   - owner: repository owner (e.g. "thumbrise").
+//   - repo: repository name (e.g. "autosolve").
 //   - count: maximum number of issues to return per page. Values < 1 default to 50.
 //   - since: only issues updated after this time are returned. Zero value fetches all.
 //
@@ -58,7 +62,7 @@ func NewClient(cfg *config.Github, client *github.Client, logger *slog.Logger) *
 //
 // On success, resp carries HTTP metadata (rate limit headers, pagination).
 // On error, both issues and resp are nil.
-func (p *Client) GetMostUpdatedIssues(ctx context.Context, count int, since time.Time) ([]*github.Issue, *github.Response, error) {
+func (p *Client) GetMostUpdatedIssues(ctx context.Context, owner, repo string, count int, since time.Time) ([]*github.Issue, *github.Response, error) {
 	if count < 1 {
 		count = 50
 
@@ -75,10 +79,21 @@ func (p *Client) GetMostUpdatedIssues(ctx context.Context, count int, since time
 		},
 	}
 
-	issues, resp, err := p.client.Issues.ListByRepo(ctx, p.cfg.Owner, p.cfg.Repo, opts)
+	issues, resp, err := p.client.Issues.ListByRepo(ctx, owner, repo, opts)
 	if err != nil {
 		return nil, nil, p.mapError(err)
 	}
 
 	return issues, resp, nil
+}
+
+// GetRepository fetches repository metadata from GitHub API.
+// Used by preflight to validate repository existence and accessibility.
+func (p *Client) GetRepository(ctx context.Context, owner, repo string) (*github.Repository, error) {
+	r, _, err := p.client.Repositories.Get(ctx, owner, repo)
+	if err != nil {
+		return nil, p.mapError(err)
+	}
+
+	return r, nil
 }

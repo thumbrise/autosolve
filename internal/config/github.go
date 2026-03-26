@@ -21,13 +21,20 @@ import (
 	"github.com/thumbrise/autosolve/internal/infrastructure/config"
 )
 
+type Repository struct {
+	Owner string `validate:"required"`
+	Name  string `validate:"required"`
+}
+
 type Github struct {
-	Token  string `masq:"secret"       validate:"required"`
-	Owner  string `validate:"required"`
-	Repo   string `validate:"required"`
+	Token             string       `masq:"secret"            validate:"required"`
+	Repositories      []Repository `validate:"required,dive"`
+	HttpClientTimeout time.Duration `validate:"required"`
+	RateLimit         struct {
+		MinInterval time.Duration `validate:"required"`
+	} `validate:"required"`
 	Issues struct {
-		ParseInterval     time.Duration `validate:"required"`
-		HttpClientTimeout time.Duration `validate:"required"`
+		ParseInterval time.Duration `validate:"required"`
 	}
 }
 
