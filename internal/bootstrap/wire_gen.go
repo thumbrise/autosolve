@@ -19,13 +19,12 @@ import (
 	"github.com/thumbrise/autosolve/internal/infrastructure/dal/sqlcgen"
 	"github.com/thumbrise/autosolve/internal/infrastructure/database"
 	"github.com/thumbrise/autosolve/internal/infrastructure/github"
-	"github.com/thumbrise/autosolve/internal/infrastructure/telemetry"
 	"log/slog"
 )
 
 // Injectors from wire.go:
 
-func InitializeKernel(contextContext context.Context, reader *config.Reader, log *config2.Log, logger *slog.Logger, telemetryTelemetry *telemetry.Telemetry) (*Kernel, error) {
+func InitializeKernel(contextContext context.Context, reader *config.Reader, log *config2.Log, logger *slog.Logger) (*Kernel, error) {
 	configGithub, err := config2.NewGithub(contextContext, reader)
 	if err != nil {
 		return nil, err
@@ -66,6 +65,6 @@ func InitializeKernel(contextContext context.Context, reader *config.Reader, log
 	testSubTree := cmds.NewTestSubTree(logger)
 	v3 := cmd.NewCommands(schedule, migrate, migrateUp, migrateUpFresh, migrateDown, migrateStatus, migrateCreate, migrateRedo, test, testSubTree)
 	root := cmd.NewRoot()
-	kernel := NewKernel(v3, logger, root, db, telemetryTelemetry)
+	kernel := NewKernel(v3, db, logger, root)
 	return kernel, nil
 }

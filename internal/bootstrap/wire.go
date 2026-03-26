@@ -26,7 +26,6 @@ import (
 	"github.com/thumbrise/autosolve/internal"
 	"github.com/thumbrise/autosolve/internal/config"
 	configinfra "github.com/thumbrise/autosolve/internal/infrastructure/config"
-	"github.com/thumbrise/autosolve/internal/infrastructure/telemetry"
 )
 
 func InitializeKernel(
@@ -34,7 +33,6 @@ func InitializeKernel(
 	_ *configinfra.Reader,
 	_ *config.Log,
 	_ *slog.Logger,
-	_ *telemetry.Telemetry,
 ) (*Kernel, error) {
 	wire.Build(
 		NewKernel,

@@ -19,6 +19,8 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"sync"
+	"time"
 
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/log/global"
@@ -56,6 +58,8 @@ type Telemetry struct {
 	meterProvider  *sdkmetric.MeterProvider
 	loggerProvider *sdklog.LoggerProvider
 	logger         *slog.Logger
+	shutdownOnce   sync.Once
+	shutdownErr    error
 }
 
 const none = "none"
@@ -121,6 +125,17 @@ func New(ctx context.Context, cfg *config.Otel, logger *slog.Logger) (*Telemetry
 // Shutdown flushes and releases all OTEL SDK resources.
 // Shutdown order is reverse of creation: logs → metrics → traces.
 func (t *Telemetry) Shutdown(ctx context.Context) error {
+	t.shutdownOnce.Do(func() {
+		t.shutdownErr = t.doShutdown(ctx)
+	})
+
+	return t.shutdownErr
+}
+
+func (t *Telemetry) doShutdown(ctx context.Context) error {
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+	defer cancel()
+
 	var errs error
 
 	if t.loggerProvider != nil {
