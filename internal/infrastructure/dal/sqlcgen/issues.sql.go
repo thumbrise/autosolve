@@ -27,6 +27,7 @@ import (
 const getLastUpdateTime = `-- name: GetLastUpdateTime :one
 SELECT github_id, github_updated_at
 FROM issues
+WHERE repository_id = ?
 ORDER BY github_updated_at DESC
 LIMIT 1
 `
@@ -36,8 +37,8 @@ type GetLastUpdateTimeRow struct {
 	GithubUpdatedAt time.Time
 }
 
-func (q *Queries) GetLastUpdateTime(ctx context.Context, db DBTX) (GetLastUpdateTimeRow, error) {
-	row := db.QueryRowContext(ctx, getLastUpdateTime)
+func (q *Queries) GetLastUpdateTime(ctx context.Context, db DBTX, repositoryID int64) (GetLastUpdateTimeRow, error) {
+	row := db.QueryRowContext(ctx, getLastUpdateTime, repositoryID)
 	var i GetLastUpdateTimeRow
 	err := row.Scan(&i.GithubID, &i.GithubUpdatedAt)
 	return i, err
@@ -50,7 +51,8 @@ INSERT INTO issues (repository_id, github_id, number, title, body, state,
 VALUES (?, ?, ?, ?, ?, ?,
         ?, ?, ?, ?, ?,
         ?, ?, ?)
-ON CONFLICT(github_id) DO UPDATE SET title             = excluded.title,
+ON CONFLICT(github_id) DO UPDATE SET repository_id     = excluded.repository_id,
+                                     title             = excluded.title,
                                      body              = excluded.body,
                                      state             = excluded.state,
                                      is_pull_request   = excluded.is_pull_request,

@@ -18,10 +18,9 @@ import (
 	"github.com/google/wire"
 
 	"github.com/thumbrise/autosolve/internal/application"
-	"github.com/thumbrise/autosolve/internal/application/worker"
-	"github.com/thumbrise/autosolve/internal/application/worker/workers"
 	"github.com/thumbrise/autosolve/internal/config"
 	"github.com/thumbrise/autosolve/internal/domain/issue"
+	"github.com/thumbrise/autosolve/internal/domain/repository"
 	"github.com/thumbrise/autosolve/internal/infrastructure/dal/repositories"
 	"github.com/thumbrise/autosolve/internal/infrastructure/dal/sqlcgen"
 	"github.com/thumbrise/autosolve/internal/infrastructure/database"
@@ -36,14 +35,18 @@ var Bindings = wire.NewSet(
 	database.NewMigrator,
 	sqlcgen.New,
 
-	github.NewClient,
+	github.NewRateLimiter,
 	github.NewGithubClient,
+	github.NewClient,
 
 	application.NewScheduler,
+	application.NewPlanner,
+	application.NewPreflights,
+	application.NewWorkers,
 
-	worker.NewWorkers,
-	workers.NewIssueUpdatesPoller,
+	repository.NewValidator,
 	issue.NewParser,
 
 	repositories.NewIssueRepository,
+	repositories.NewRepositoryRepository,
 )

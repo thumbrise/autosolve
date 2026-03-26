@@ -16,28 +16,56 @@ package application
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 
-	"github.com/thumbrise/autosolve/internal/application/worker"
 	"github.com/thumbrise/autosolve/pkg/longrun"
 )
 
+// Scheduler orchestrates execution in two phases:
+//  1. Preflights — one-shot tasks, all must pass before workers start.
+//  2. Workers — long-running interval tasks.
+//
+// Scheduler is generic — it doesn't know about repositories, GitHub, or issues.
+// It only knows phases and task units provided by Planner.
 type Scheduler struct {
-	workers []worker.Worker
+	planner *Planner
 	logger  *slog.Logger
 }
 
-func NewScheduler(issueWorker []worker.Worker, logger *slog.Logger) *Scheduler {
-	return &Scheduler{workers: issueWorker, logger: logger}
+func NewScheduler(planner *Planner, logger *slog.Logger) *Scheduler {
+	return &Scheduler{planner: planner, logger: logger}
 }
 
 func (s *Scheduler) Run(ctx context.Context) error {
-	runner := longrun.NewRunner(longrun.RunnerOptions{
-		Logger: s.logger,
-	})
+	s.logger.InfoContext(ctx, "scheduler: running preflights")
 
-	for _, w := range s.workers {
-		runner.Add(w.Task())
+	if err := s.runPreflights(ctx); err != nil {
+		return fmt.Errorf("preflights failed: %w", err)
+	}
+
+	s.logger.InfoContext(ctx, "scheduler: preflights done, starting workers")
+
+	return s.runWorkers(ctx)
+}
+
+func (s *Scheduler) runPreflights(ctx context.Context) error {
+	runner := longrun.NewRunner(longrun.RunnerOptions{Logger: s.logger})
+
+	for _, u := range s.planner.Preflights() {
+		name := fmt.Sprintf("preflight:%s:%s/%s", u.Resource, u.Repo.Owner, u.Repo.Name)
+		runner.Add(longrun.NewOneShotTask(name, u.Work, u.Rules))
+	}
+
+	return runner.Wait(ctx)
+}
+
+func (s *Scheduler) runWorkers(ctx context.Context) error {
+	runner := longrun.NewRunner(longrun.RunnerOptions{Logger: s.logger})
+
+	for _, u := range s.planner.Workers() {
+		name := fmt.Sprintf("worker:%s:%s/%s", u.Resource, u.Repo.Owner, u.Repo.Name)
+		runner.Add(longrun.NewIntervalTask(name, u.Interval, u.Work, u.Rules))
 	}
 
 	return runner.Wait(ctx)

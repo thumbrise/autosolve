@@ -11,10 +11,9 @@ import (
 	"github.com/thumbrise/autosolve/cmd"
 	"github.com/thumbrise/autosolve/cmd/cmds"
 	"github.com/thumbrise/autosolve/internal/application"
-	"github.com/thumbrise/autosolve/internal/application/worker"
-	"github.com/thumbrise/autosolve/internal/application/worker/workers"
 	config2 "github.com/thumbrise/autosolve/internal/config"
 	"github.com/thumbrise/autosolve/internal/domain/issue"
+	"github.com/thumbrise/autosolve/internal/domain/repository"
 	"github.com/thumbrise/autosolve/internal/infrastructure/config"
 	"github.com/thumbrise/autosolve/internal/infrastructure/dal/repositories"
 	"github.com/thumbrise/autosolve/internal/infrastructure/dal/sqlcgen"
@@ -31,8 +30,9 @@ func InitializeKernel(contextContext context.Context, reader *config.Reader, log
 	if err != nil {
 		return nil, err
 	}
-	client := github.NewGithubClient(configGithub)
-	githubClient := github.NewClient(configGithub, client, logger)
+	rateLimiter := github.NewRateLimiter(configGithub)
+	client := github.NewGithubClient(configGithub, rateLimiter)
+	githubClient := github.NewClient(client, logger)
 	configDatabase, err := config2.NewDatabase(contextContext, reader)
 	if err != nil {
 		return nil, err
@@ -42,11 +42,14 @@ func InitializeKernel(contextContext context.Context, reader *config.Reader, log
 		return nil, err
 	}
 	queries := sqlcgen.New()
+	repositoryRepository := repositories.NewRepositoryRepository(db, queries, logger)
+	validator := repository.NewValidator(githubClient, repositoryRepository, logger)
+	v := application.NewPreflights(validator)
 	issueRepository := repositories.NewIssueRepository(db, queries, logger)
 	parser := issue.NewParser(configGithub, githubClient, issueRepository, logger)
-	issueUpdatesPoller := workers.NewIssueUpdatesPoller(configGithub, logger, parser)
-	v := worker.NewWorkers(issueUpdatesPoller)
-	scheduler := application.NewScheduler(v, logger)
+	v2 := application.NewWorkers(parser)
+	planner := application.NewPlanner(configGithub, v, v2, repositoryRepository)
+	scheduler := application.NewScheduler(planner, logger)
 	schedule := cmds.NewSchedule(scheduler)
 	migrate := cmds.NewMigrate()
 	migrator, err := database.NewMigrator(db, logger)
@@ -61,8 +64,8 @@ func InitializeKernel(contextContext context.Context, reader *config.Reader, log
 	migrateRedo := cmds.NewMigrateRedo(migrator)
 	test := cmds.NewTest(logger)
 	testSubTree := cmds.NewTestSubTree(logger)
-	v2 := cmd.NewCommands(schedule, migrate, migrateUp, migrateUpFresh, migrateDown, migrateStatus, migrateCreate, migrateRedo, test, testSubTree)
+	v3 := cmd.NewCommands(schedule, migrate, migrateUp, migrateUpFresh, migrateDown, migrateStatus, migrateCreate, migrateRedo, test, testSubTree)
 	root := cmd.NewRoot()
-	kernel := NewKernel(v2, logger, root, db, telemetryTelemetry)
+	kernel := NewKernel(v3, logger, root, db, telemetryTelemetry)
 	return kernel, nil
 }

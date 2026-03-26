@@ -24,10 +24,13 @@ import (
 	"github.com/google/go-github/v84/github"
 
 	"github.com/thumbrise/autosolve/internal/config"
+	"github.com/thumbrise/autosolve/internal/domain/spec"
+	"github.com/thumbrise/autosolve/internal/domain/spec/tenants"
 	"github.com/thumbrise/autosolve/internal/infrastructure/dal"
 	"github.com/thumbrise/autosolve/internal/infrastructure/dal/model"
 	"github.com/thumbrise/autosolve/internal/infrastructure/dal/repositories"
 	githubinfra "github.com/thumbrise/autosolve/internal/infrastructure/github"
+	"github.com/thumbrise/autosolve/pkg/httperr"
 )
 
 // Sentinel errors for classifying parser failures.
@@ -38,6 +41,10 @@ var (
 	ErrReadLastUpdate = errors.New("read last update")
 )
 
+// Parser fetches and stores issues for a repository.
+// Stateless per repository — owner, repo and repositoryID are received
+// via RepoTenant at each invocation.
+// Implements application.Worker via TaskSpec().
 type Parser struct {
 	githubClient    *githubinfra.Client
 	logger          *slog.Logger
@@ -49,16 +56,29 @@ func NewParser(cfg *config.Github, githubClient *githubinfra.Client, issueReposi
 	return &Parser{cfg: cfg, githubClient: githubClient, issueRepository: issueRepository, logger: logger}
 }
 
-func (p *Parser) Run(ctx context.Context) error {
-	p.logger.DebugContext(ctx, "starting request to list issues")
+// TaskSpec returns a WorkerSpec for polling issues.
+func (p *Parser) TaskSpec() spec.WorkerSpec {
+	return spec.WorkerSpec{
+		Resource:   "issues",
+		Interval:   p.cfg.Issues.ParseInterval,
+		Transients: httperr.TransientErrors(),
+		Work:       p.Run,
+	}
+}
 
-	lastUpdate, err := p.lastUpdate(ctx)
+func (p *Parser) Run(ctx context.Context, tenant tenants.RepoTenant) error {
+	p.logger.DebugContext(ctx, "starting request to list issues",
+		slog.String("owner", tenant.Owner),
+		slog.String("name", tenant.Name),
+	)
+
+	lastUpdate, err := p.lastUpdate(ctx, tenant.RepoID)
 	if err != nil {
 		// SQLLite 1 connection pool. Always permanent
 		return fmt.Errorf("%w: %w", ErrReadLastUpdate, err)
 	}
 
-	issues, _, err := p.githubClient.GetMostUpdatedIssues(ctx, 50, lastUpdate)
+	issues, _, err := p.githubClient.GetMostUpdatedIssues(ctx, tenant.Owner, tenant.Name, 50, lastUpdate)
 	if err != nil {
 		if p.adaptRateLimit(ctx, err) {
 			// rate limit was caught
@@ -80,7 +100,7 @@ func (p *Parser) Run(ctx context.Context) error {
 
 	p.logger.InfoContext(ctx, "fetched", slog.Int("count", len(issues)))
 
-	err = p.store(ctx, issues)
+	err = p.store(ctx, tenant.RepoID, issues)
 	if err != nil {
 		// SQLite 1 connection pool. Always permanent
 		return fmt.Errorf("%w: %w", ErrStoreIssues, err)
@@ -91,16 +111,16 @@ func (p *Parser) Run(ctx context.Context) error {
 	return nil
 }
 
-func (p *Parser) store(ctx context.Context, issues []*github.Issue) error {
+func (p *Parser) store(ctx context.Context, repositoryID int64, issues []*github.Issue) error {
 	models := make([]*model.Issue, 0, len(issues))
 	for _, issue := range issues {
-		models = append(models, p.mapIssueToModel(issue))
+		models = append(models, p.mapIssueToModel(repositoryID, issue))
 	}
 
 	return p.issueRepository.UpsertMany(ctx, models)
 }
 
-func (p *Parser) mapIssueToModel(issue *github.Issue) *model.Issue {
+func (p *Parser) mapIssueToModel(repositoryID int64, issue *github.Issue) *model.Issue {
 	state := model.IssueStateOpen
 	if issue.GetState() == "closed" {
 		state = model.IssueStateClosed
@@ -109,6 +129,7 @@ func (p *Parser) mapIssueToModel(issue *github.Issue) *model.Issue {
 	now := time.Now()
 
 	result := &model.Issue{
+		RepositoryID:    repositoryID,
 		GithubID:        issue.GetID(),
 		Number:          int64(issue.GetNumber()),
 		Title:           issue.GetTitle(),
@@ -130,8 +151,8 @@ func (p *Parser) mapIssueToModel(issue *github.Issue) *model.Issue {
 	return result
 }
 
-func (p *Parser) lastUpdate(ctx context.Context) (time.Time, error) {
-	res, err := p.issueRepository.GetLastUpdateTime(ctx)
+func (p *Parser) lastUpdate(ctx context.Context, repositoryID int64) (time.Time, error) {
+	res, err := p.issueRepository.GetLastUpdateTime(ctx, repositoryID)
 	if err != nil {
 		if dal.IsNotFound(err) {
 			return time.Time{}, nil
