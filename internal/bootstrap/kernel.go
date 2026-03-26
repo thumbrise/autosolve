@@ -19,35 +19,29 @@ import (
 	"database/sql"
 	"io"
 	"log/slog"
-	"time"
 
 	"github.com/spf13/cobra"
 
 	"github.com/thumbrise/autosolve/cmd"
-	"github.com/thumbrise/autosolve/internal/infrastructure/telemetry"
 )
 
 const envPrefix = "AUTOSOLVE"
-
-type ShutdownFunc func(ctx context.Context) error
 
 type Kernel struct {
 	rootCommand *cmd.Root
 	commands    []*cobra.Command
 	db          *sql.DB
-	telemetry   *telemetry.Telemetry
 	logger      *slog.Logger
 }
 
-func NewKernel(commands []*cobra.Command, logger *slog.Logger, rootCommand *cmd.Root, db *sql.DB, telemetry *telemetry.Telemetry) *Kernel {
-	return &Kernel{commands: commands, logger: logger, rootCommand: rootCommand, db: db, telemetry: telemetry}
+func NewKernel(commands []*cobra.Command, db *sql.DB, logger *slog.Logger, rootCommand *cmd.Root) *Kernel {
+	return &Kernel{commands: commands, db: db, logger: logger, rootCommand: rootCommand}
 }
 
 func (b *Kernel) Execute(ctx context.Context, output io.Writer) error {
 	b.registerCommands()
-	b.rootCommand.SetOut(output)
 
-	defer b.shutdown(ctx, 5*time.Second, b.telemetry.Shutdown)
+	b.rootCommand.SetOut(output)
 	defer b.shutdownDB(ctx)
 
 	return b.rootCommand.ExecuteContext(ctx)
@@ -62,17 +56,5 @@ func (b *Kernel) registerCommands() {
 func (b *Kernel) shutdownDB(ctx context.Context) {
 	if err := b.db.Close(); err != nil {
 		b.logger.ErrorContext(ctx, "failed to close database", slog.Any("error", err))
-	}
-}
-
-func (b *Kernel) shutdown(ctx context.Context, timeout time.Duration, fn ShutdownFunc) {
-	shutdownCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), timeout)
-	defer cancel()
-
-	err := fn(shutdownCtx)
-	if err != nil {
-		b.logger.ErrorContext(shutdownCtx, "shutdown error",
-			slog.Any("error", err),
-		)
 	}
 }
