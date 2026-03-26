@@ -4,7 +4,7 @@
 [![Go Reference](https://pkg.go.dev/badge/github.com/thumbrise/autosolve.svg)](https://pkg.go.dev/github.com/thumbrise/autosolve)
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](/LICENSE)
 
-Available languages: [English](/README.md), [Русский](/docs/README.ru.md)
+Available languages: [English](/docs/IDEA.md), [Русский](/docs/IDEA.ru.md)
 
 # GitHub Dispatcher Agent – автоматический AI-ассистент для ваших репозиториев
 

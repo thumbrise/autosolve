@@ -4,75 +4,177 @@
 [![Go Reference](https://pkg.go.dev/badge/github.com/thumbrise/autosolve.svg)](https://pkg.go.dev/github.com/thumbrise/autosolve)
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](/LICENSE)
 
-Available languages: [English](/README.md), [Русский](/docs/README.ru.md)
+Available languages: [English](README.md), [Русский](README.ru.md)
 
-# GitHub Dispatcher Agent – automatic AI assistant for your repositories
+Lightweight daemon that polls GitHub repositories and dispatches AI agents to solve issues automatically.
 
-## Idea
+> Original project vision: [docs/IDEA.md](docs/IDEA.md)
 
-We are building a simple and reliable tool that automatically monitors activity in a GitHub repository and, when needed, launches AI agents to solve tasks such as bug fixes, feature additions, or code analysis. The product is a standalone process that works on a polling basis, requires no complex webhook or CI/CD setup, and can be deployed anywhere – from a personal laptop to a dedicated server.
+## Navigation
 
-## Problem
+- [Review Guidelines](REVIEW.md) — code style, architecture, git conventions
+- [Documentation](docs) — additional docs and translations
 
-Modern AI tools for development automation (OpenHands, SWE-agent, Devin) have powerful capabilities, but their integration with GitHub is often complex or unstable:
+## Tech Stack
 
-- they require setting up webhooks or GitHub Actions, which is not always convenient
-- built-in schedulers (cron) are unreliable or need extra infrastructure
-- most solutions are designed for one-off runs on demand, not for continuous background monitoring
-- for small teams or individual developers, deploying such agents can be too complicated and expensive
+| Component     | Technology                                                                        |
+|---------------|-----------------------------------------------------------------------------------|
+| Language      | Go                                                                                |
+| Database      | SQLite (pure Go, WAL mode)                                                        |
+| Migrations    | [goose](https://github.com/pressly/goose)                                         |
+| SQL codegen   | [sqlc](https://sqlc.dev)                                                          |
+| DI            | [Wire](https://github.com/google/wire)                                            |
+| Observability | [OpenTelemetry](https://opentelemetry.io) (traces, metrics, logs → OTLP/gRPC)     |
+| CLI           | [cobra](https://github.com/spf13/cobra) + [viper](https://github.com/spf13/viper) |
 
-## Our solution
+## Quick Start
 
-We propose a lightweight dispatcher that:
+### Prerequisites
 
-- runs as a persistent process (daemon) on your computer or server
-- periodically (e.g., every 5–10 minutes) polls the GitHub API for a given repository
-- detects new issues, pull requests, comments, mentions, and labels
-- stores the state of the last check in local storage (the exact technology choice is open – it could be a file, an embedded database, or something else)
-- when events matching predefined rules occur (e.g., an issue with the label `ai` or a comment containing `@bot`), it invokes an external AI tool (like ra-aid) and passes the task context
-- after the AI finishes, it publishes the result back to GitHub – posting a comment, creating a pull request, or performing another action
+- Go 1.26+
+- [Task](https://taskfile.dev) (optional, but recommended)
 
-All decisions about specific technologies (programming language, storage type, deployment method) can be made later, as we better understand the requirements. The architecture is designed so that components can be replaced without rewriting the whole system.
+### Setup
 
-## How it helps users
+```bash
+git clone https://github.com/thumbrise/autosolve.git
+cd autosolve
+go mod download
+cp config.yml.example config.yml
+```
 
-- **Simplicity**: no need to understand webhooks or GitHub Actions – just run it and forget
-- **Reliability**: polling with state persistence ensures no event is missed, even after restarts
-- **Flexibility**: any AI tool that can be invoked from the command line can be used (ra-aid, local models via Ollama, Python scripts, etc.)
-- **Resource efficiency**: the agent consumes minimal CPU and memory, and can run even on a Raspberry Pi
-- **Security**: all data stays with you; tokens are not shared with third parties
+Edit `config.yml` — at minimum set your GitHub token and target repositories:
 
-## High-level architecture
+```yaml
+github:
+  token: ghp_your_token_here
+  repositories:
+    - owner: your-org
+      name: your-repo
+```
+<details>
+  <summary>OpenTelemetry</summary>
 
-The system consists of several logical blocks that can be implemented in different ways:
+**Disabled by default.**
 
-1. **Dispatcher** – the main loop that runs on a schedule. It coordinates the other modules.
-2. **Data collector** – a module that retrieves the current state of the repository (issues, PRs, comments) via the GitHub API.
-3. **State storage** – a component that remembers which events have already been processed, to avoid duplicates.
-4. **Rule analyzer** – checks whether a new event matches the configured criteria (labels, authors, keywords).
-5. **Executor** – launches an external AI tool with the appropriate arguments and handles its output.
-6. **Publisher** – sends the result back to GitHub (comment, pull request creation, etc.).
+You can collect [OpenTelemetry](https://opentelemetry.io) data via configuration variables with standard OTEL semantic:
 
-Each block can be implemented independently, and we will be able to replace or improve them as the project evolves.
+```yaml
+otel:
+  sdkDisabled: true
+  serviceName: autosolve
+  resourceAttributes: "service.version=1.0.0,deployment.environment=production"
+  propagators: "tracecontext,baggage"
+  traces:
+    exporter: otlp
+    sampler: parentbased_always_on
+    samplerArg: "1.0"
+  metrics:
+    exporter: otlp
+  logs:
+    exporter: otlp
+  exporter:
+    endpoint: "localhost:4317"
+    protocol: grpc
+    headers: "uptrace-dsn=http://aiji-qvjRjFBnObLuzAkpA@localhost:14318?grpc=14317"
+    timeout: 10s
+```
 
-## Example workflow
+All config fields can be overridden via environment variables with `AUTOSOLVE_` prefix.
+Example: `otel.serviceName` → `AUTOSOLVE_OTEL_SERVICENAME`.
 
-1. The user configures the agent for their repository, providing a token and a polling interval.
-2. The agent starts working. At each cycle, it fetches all open issues and pull requests.
-3. If a new issue appears with the label `ai`, the agent notices it and passes the issue description to ra-aid (or another tool).
-4. ra-aid analyzes the code, generates a fix, and creates a pull request.
-5. The agent receives the result and posts a comment in the issue with a link to the created PR.
-6. The user sees that the task has been solved automatically.
+See: https://opentelemetry.io/docs/specs/otel/configuration/sdk-environment-variables/
 
-## Current status and next steps
+</details>
 
-- We are at the concept stage, exploring implementation options.
-- The plan is to create a prototype in a popular language (Go, Python) with minimal functionality: polling, state storage, and external command execution.
-- After verifying it works, we will add rule support and result publication.
-- Further down the road, we may provide ready-made builds (Docker images, binary releases) and documentation for self-hosting.
+### Migrate database
 
-## Why this project makes sense
+```bash
+go run . migrate up -y
 
-Automating routine development tasks is a real need for many teams. Existing AI agents already exist, but integrating them with the GitHub ecosystem is often painful. Our approach fills this gap by offering a simple and reliable bridge between GitHub and any AI tool. It lets developers focus on more important work while the agent handles typical tasks.
+```
 
-We are not reinventing AI – we are making it accessible and convenient to use.
+### Start scheduler
+
+```bash
+go run . schedule
+```
+
+Or using Task:
+
+```bash
+task up
+```
+
+## Architecture
+
+```
+cmd/                    CLI entry points (cobra)
+internal/
+├── bootstrap/          App init (Bootstrap → Wire → Kernel)
+├── config/             Typed config structs (viper-backed)
+├── domain/             Business logic
+│   ├── issue/          Issue parser (Worker)
+│   ├── repository/     Repository validator (Preflight)
+│   └── spec/           Task specs
+│       └── tenants/    Tenant definitions (e.g. RepoTenant)
+├── application/        Orchestration layer
+│   ├── schedule.go     Two-phase Scheduler
+│   ├── planner.go      Per-repo task planning
+│   ├── contracts.go    Preflight / Worker interfaces
+│   └── registry.go     Task registration
+└── infrastructure/     External dependencies
+    ├── config/         Config loading (viper reader, validator)
+    ├── github/         GitHub API client + rate limiter
+    ├── dal/            Data access layer
+    │   ├── model/      Domain models
+    │   ├── queries/    Raw SQL files (sqlc source)
+    │   ├── repositories/ Repository implementations
+    │   └── sqlcgen/    sqlc-generated code
+    ├── database/       SQLite connection + goose migrator
+    ├── logger/         slog setup
+    └── telemetry/      OTEL SDK bootstrap
+pkg/
+└── longrun/            Task orchestration with per-error retry and backoff
+```
+
+The scheduler runs in two phases:
+
+1. **Preflights** — one-shot tasks (e.g. validate repository access via GitHub API). All must pass before workers start.
+2. **Workers** — long-running interval tasks (e.g. poll and parse issues). If any worker fails permanently, all others are cancelled.
+
+## Commands
+
+| Command                 | Description                               |
+|-------------------------|-------------------------------------------|
+| `schedule`              | Start the polling daemon                  |
+| `migrate up [N]`        | Apply pending migrations (all by default) |
+| `migrate up:fresh`      | Drop all tables and re-run all migrations |
+| `migrate down <N\|*>`   | Roll back N migrations (or all with `*`)  |
+| `migrate status`        | Show migration status                     |
+| `migrate create <name>` | Create a new SQL migration file           |
+| `migrate redo`          | Roll back and re-apply the last migration |
+
+## Development
+
+```bash
+task generate   # sqlc + wire + license headers
+task lint        # golangci-lint + license-eye + govulncheck + sqlfluff + sqlcgen type check
+task test        # unit tests + benchmarks
+```
+
+## Current Status
+
+Epic v1 is in progress — see [Epic: v1 architecture redesign](https://github.com/thumbrise/autosolve/issues/59).
+
+What works today:
+- Multi-repo GitHub issue polling with state persistence in SQLite
+- Repository validation preflight
+- Rate limiting via HTTP transport
+- goose migrations + sqlc-generated DAL
+- Full OTEL observability (traces, metrics, logs)
+- Two-phase scheduler with per-error retry and exponential backoff
+
+## License
+
+[Apache License 2.0](LICENSE)
