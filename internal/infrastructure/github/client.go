@@ -43,7 +43,7 @@ func NewClient(client *github.Client, logger *slog.Logger) *Client {
 	return &Client{client: client, logger: logger}
 }
 
-// GetMostUpdatedIssues fetches open issues from the given repository,
+// GetMostUpdatedIssues fetches issues from the given repository,
 // sorted by update time (oldest first).
 //
 // The client is stateless per repository — owner and repo are explicit parameters.
@@ -70,7 +70,7 @@ func (p *Client) GetMostUpdatedIssues(ctx context.Context, owner, repo string, c
 	}
 
 	opts := &github.IssueListByRepoOptions{
-		State:     "open",
+		State:     "all",
 		Sort:      "updated",
 		Direction: "asc",
 		Since:     since,
