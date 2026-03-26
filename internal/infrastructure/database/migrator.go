@@ -21,7 +21,6 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
-	"log/slog"
 	"os"
 	"path/filepath"
 	"text/template"
@@ -44,12 +43,17 @@ var ErrMigrationFailed = errors.New("migration failed")
 // Runtime operations (Up, Down, Status, Redo) use the embedded migration files
 // compiled into the binary. Create writes new files to disk and is intended
 // for development only.
+//
+// Methods that apply migrations return []*goose.MigrationResult and error.
+// On partial failure goose returns a *goose.PartialError containing both
+// the successfully applied migrations and the failed one.
+// Migrator preserves this contract — callers can use errors.As to extract
+// partial results when needed.
 type Migrator struct {
 	provider *goose.Provider
-	logger   *slog.Logger
 }
 
-func NewMigrator(db *sql.DB, logger *slog.Logger) (*Migrator, error) {
+func NewMigrator(db *sql.DB) (*Migrator, error) {
 	migrations, err := fs.Sub(embeddedMigrations, "migrations")
 	if err != nil {
 		return nil, fmt.Errorf("%w: sub fs: %w", ErrMigrationFailed, err)
@@ -60,25 +64,24 @@ func NewMigrator(db *sql.DB, logger *slog.Logger) (*Migrator, error) {
 		return nil, fmt.Errorf("%w: create provider: %w", ErrMigrationFailed, err)
 	}
 
-	return &Migrator{provider: provider, logger: logger}, nil
+	return &Migrator{provider: provider}, nil
 }
 
 // Up applies pending migrations. If steps <= 0, applies all pending migrations.
 // Otherwise applies exactly that many steps.
+//
+// On partial failure the error wraps *goose.PartialError with applied results.
 func (m *Migrator) Up(ctx context.Context, steps int) ([]*goose.MigrationResult, error) {
 	if steps <= 0 {
 		results, err := m.provider.Up(ctx)
 		if err != nil {
-			return nil, fmt.Errorf("%w: up: %w", ErrMigrationFailed, err)
+			return results, fmt.Errorf("%w: up: %w", ErrMigrationFailed, err)
 		}
-
-		m.logApplied(ctx, results)
 
 		return results, nil
 	}
 
 	results := make([]*goose.MigrationResult, 0, steps)
-
 	for range steps {
 		r, err := m.provider.UpByOne(ctx)
 		if err != nil {
@@ -92,15 +95,12 @@ func (m *Migrator) Up(ctx context.Context, steps int) ([]*goose.MigrationResult,
 		results = append(results, r)
 	}
 
-	m.logApplied(ctx, results)
-
 	return results, nil
 }
 
 // Down rolls back applied migrations. Steps must be > 0, or use DownAll.
 func (m *Migrator) Down(ctx context.Context, steps int) ([]*goose.MigrationResult, error) {
 	results := make([]*goose.MigrationResult, 0, steps)
-
 	for range steps {
 		r, err := m.provider.Down(ctx)
 		if err != nil {
@@ -114,8 +114,6 @@ func (m *Migrator) Down(ctx context.Context, steps int) ([]*goose.MigrationResul
 		results = append(results, r)
 	}
 
-	m.logRolledBack(ctx, results)
-
 	return results, nil
 }
 
@@ -123,10 +121,8 @@ func (m *Migrator) Down(ctx context.Context, steps int) ([]*goose.MigrationResul
 func (m *Migrator) DownAll(ctx context.Context) ([]*goose.MigrationResult, error) {
 	results, err := m.provider.DownTo(ctx, 0)
 	if err != nil {
-		return nil, fmt.Errorf("%w: down all: %w", ErrMigrationFailed, err)
+		return results, fmt.Errorf("%w: down all: %w", ErrMigrationFailed, err)
 	}
-
-	m.logRolledBack(ctx, results)
 
 	return results, nil
 }
@@ -145,12 +141,12 @@ func (m *Migrator) Status(ctx context.Context) ([]*goose.MigrationStatus, error)
 func (m *Migrator) Redo(ctx context.Context) ([]*goose.MigrationResult, []*goose.MigrationResult, error) {
 	downResults, err := m.Down(ctx, 1)
 	if err != nil {
-		return nil, nil, err
+		return downResults, nil, err
 	}
 
 	upResults, err := m.Up(ctx, 1)
 	if err != nil {
-		return downResults, nil, err
+		return downResults, upResults, err
 	}
 
 	return downResults, upResults, nil
@@ -158,35 +154,23 @@ func (m *Migrator) Redo(ctx context.Context) ([]*goose.MigrationResult, []*goose
 
 // Fresh drops all tables and re-applies all migrations from scratch.
 // Development-only operation — equivalent to Laravel's migrate:fresh.
-func (m *Migrator) Fresh(ctx context.Context) ([]*goose.MigrationResult, error) {
-	if _, err := m.DownAll(ctx); err != nil {
-		return nil, err
+//
+// Returns both down and up results so the caller can observe the full operation.
+// On DownAll failure only downResults are populated. On Up failure both slices
+// contain whatever was completed before the error.
+func (m *Migrator) Fresh(ctx context.Context) ([]*goose.MigrationResult, []*goose.MigrationResult, error) {
+	downResults, err := m.DownAll(ctx)
+	if err != nil {
+		return downResults, nil, err
 	}
 
-	return m.Up(ctx, 0)
-}
+	upResults, err := m.Up(ctx, 0)
 
-func (m *Migrator) logApplied(ctx context.Context, results []*goose.MigrationResult) {
-	for _, r := range results {
-		m.logger.InfoContext(ctx, "migration applied",
-			slog.String("file", r.Source.Path),
-			slog.String("duration", r.Duration.String()),
-		)
-	}
-}
-
-func (m *Migrator) logRolledBack(ctx context.Context, results []*goose.MigrationResult) {
-	for _, r := range results {
-		m.logger.InfoContext(ctx, "migration rolled back",
-			slog.String("file", r.Source.Path),
-			slog.String("duration", r.Duration.String()),
-		)
-	}
+	return downResults, upResults, err
 }
 
 var sqlMigrationTemplate = template.Must(template.New("goose.sql-migration").Parse(
 	`-- +goose Up
-
 -- +goose Down
 `))
 
