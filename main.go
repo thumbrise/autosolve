@@ -31,13 +31,21 @@ import (
 func main() {
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 
-	code := run(ctx)
+	var output bytes.Buffer
+
+	code := run(ctx, &output)
 
 	cancel()
+
+	if output.Len() > 0 {
+		fmt.Printf("\noutput:\n")
+		fmt.Print(output.String())
+	}
+
 	os.Exit(code)
 }
 
-func run(ctx context.Context) int {
+func run(ctx context.Context, output *bytes.Buffer) int {
 	boot, err := bootstrap.Bootstrap(ctx)
 	if err != nil {
 		log.Printf("failed to bootstrap: %s", err)
@@ -58,11 +66,7 @@ func run(ctx context.Context) int {
 		return handleError(ctx, boot, fmt.Errorf("failed initialize kernel: %w", err))
 	}
 
-	var output bytes.Buffer
-
-	err = kernel.Execute(ctx, &output)
-	flushOutput(&output)
-
+	err = kernel.Execute(ctx, output)
 	if err != nil {
 		return handleError(ctx, boot, fmt.Errorf("execution failed: %w", err))
 	}
@@ -75,10 +79,4 @@ func handleError(ctx context.Context, boot *bootstrap.Boot, err error) int {
 	log.Println(err)
 
 	return 1
-}
-
-func flushOutput(output *bytes.Buffer) {
-	if output.Len() > 0 {
-		fmt.Print(output.String())
-	}
 }

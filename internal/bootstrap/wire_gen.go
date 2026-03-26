@@ -51,16 +51,16 @@ func InitializeKernel(contextContext context.Context, reader *config.Reader, log
 	scheduler := application.NewScheduler(planner, logger)
 	schedule := cmds.NewSchedule(scheduler)
 	migrate := cmds.NewMigrate()
-	migrator, err := database.NewMigrator(db, logger)
+	migrator, err := database.NewMigrator(db)
 	if err != nil {
 		return nil, err
 	}
-	migrateUp := cmds.NewMigrateUp(migrator)
-	migrateUpFresh := cmds.NewMigrateUpFresh(migrator)
-	migrateDown := cmds.NewMigrateDown(migrator)
+	migrateUp := cmds.NewMigrateUp(migrator, logger)
+	migrateUpFresh := cmds.NewMigrateUpFresh(migrator, logger)
+	migrateDown := cmds.NewMigrateDown(migrator, logger)
 	migrateStatus := cmds.NewMigrateStatus(migrator)
 	migrateCreate := cmds.NewMigrateCreate(migrator)
-	migrateRedo := cmds.NewMigrateRedo(migrator)
+	migrateRedo := cmds.NewMigrateRedo(migrator, logger)
 	test := cmds.NewTest(logger)
 	testSubTree := cmds.NewTestSubTree(logger)
 	v3 := cmd.NewCommands(schedule, migrate, migrateUp, migrateUpFresh, migrateDown, migrateStatus, migrateCreate, migrateRedo, test, testSubTree)
