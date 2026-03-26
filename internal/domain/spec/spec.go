@@ -33,7 +33,7 @@ import (
 type PreflightSpec struct {
 	Resource   string
 	Transients []error
-	Work       func(ctx context.Context, tenant tenants.RepoTenant) error
+	Work       func(ctx context.Context, tenant tenants.RepositoryTenant) error
 }
 
 // WorkerSpec describes a long-running interval task.
@@ -50,5 +50,5 @@ type WorkerSpec struct {
 	Resource   string
 	Interval   time.Duration
 	Transients []error
-	Work       func(ctx context.Context, tenant tenants.RepoTenant) error
+	Work       func(ctx context.Context, tenant tenants.RepositoryTenant) error
 }

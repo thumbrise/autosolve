@@ -12,29 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package application
+package tenants
 
-import (
-	"github.com/thumbrise/autosolve/internal/domain/spec/preflights"
-	"github.com/thumbrise/autosolve/internal/domain/spec/workers"
-)
-
-// NewPreflights registers all preflight tasks.
-// Add new preflights here when extending the system.
-func NewPreflights(
-	repoValidator *preflights.RepositoryValidator,
-) []Preflight {
-	return []Preflight{
-		repoValidator,
-	}
-}
-
-// NewWorkers registers all worker tasks.
-// Add new workers here when extending the system.
-func NewWorkers(
-	issueParser *workers.IssuePoller,
-) []Worker {
-	return []Worker{
-		issueParser,
-	}
+// RepositoryTenant identifies a repository as the current unit of work.
+// All per-repository tasks receive a RepositoryTenant to know which repository they operate on.
+type RepositoryTenant struct {
+	Owner  string
+	Name   string
+	RepoID int64
 }

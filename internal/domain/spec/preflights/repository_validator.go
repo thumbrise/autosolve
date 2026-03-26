@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package repository
+package preflights
 
 import (
 	"context"
@@ -28,30 +28,30 @@ import (
 
 var ErrValidateRepository = errors.New("validate repository")
 
-// Validator checks that a repository exists and is accessible via GitHub API,
+// RepositoryValidator checks that a repository exists and is accessible via GitHub API,
 // then upserts it into the local database.
 // Implements application.Preflight via TaskSpec().
-type Validator struct {
+type RepositoryValidator struct {
 	githubClient *githubinfra.Client
 	repoRepo     *repositories.RepositoryRepository
 	logger       *slog.Logger
 }
 
-func NewValidator(githubClient *githubinfra.Client, repoRepo *repositories.RepositoryRepository, logger *slog.Logger) *Validator {
-	return &Validator{githubClient: githubClient, repoRepo: repoRepo, logger: logger}
+func NewRepositoryValidator(githubClient *githubinfra.Client, repoRepo *repositories.RepositoryRepository, logger *slog.Logger) *RepositoryValidator {
+	return &RepositoryValidator{githubClient: githubClient, repoRepo: repoRepo, logger: logger}
 }
 
 // TaskSpec returns a PreflightSpec that validates and upserts a repository.
 // Any error is permanent — if a repo is inaccessible, the app should not start.
-func (v *Validator) TaskSpec() spec.PreflightSpec {
+func (v *RepositoryValidator) TaskSpec() spec.PreflightSpec {
 	return spec.PreflightSpec{
-		Resource:   "repository",
+		Resource:   "repository-validator",
 		Transients: nil, // no retries — all errors are permanent
 		Work:       v.validate,
 	}
 }
 
-func (v *Validator) validate(ctx context.Context, tenant tenants.RepoTenant) error {
+func (v *RepositoryValidator) validate(ctx context.Context, tenant tenants.RepositoryTenant) error {
 	v.logger.InfoContext(ctx, "validating repository",
 		slog.String("owner", tenant.Owner),
 		slog.String("name", tenant.Name),

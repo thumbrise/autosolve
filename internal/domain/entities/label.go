@@ -12,12 +12,18 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package tenants
+package entities
 
-// RepoTenant identifies a repository as the current unit of work.
-// All per-repository tasks receive a RepoTenant to know which repository they operate on.
-type RepoTenant struct {
-	Owner  string
-	Name   string
-	RepoID int64
+//nolint:godox // schema reference
+// TODO(v1-epic): Record will be removed when all entities migrate to sqlc-generated models.
+
+type Label struct {
+	Record
+	RepositoryID uint64
+	GithubID     int64
+	Name         string
+	Color        string
+	Description  string
+	// Relations
+	Repository *Repository
 }

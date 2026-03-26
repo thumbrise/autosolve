@@ -20,7 +20,7 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/thumbrise/autosolve/internal/infrastructure/dal/model"
+	"github.com/thumbrise/autosolve/internal/domain/entities"
 	"github.com/thumbrise/autosolve/internal/infrastructure/dal/sqlcgen"
 )
 
@@ -34,7 +34,7 @@ func NewIssueRepository(db *sql.DB, queries *sqlcgen.Queries, logger *slog.Logge
 	return &IssueRepository{db: db, queries: queries, logger: logger}
 }
 
-func (r *IssueRepository) UpsertMany(ctx context.Context, issues []*model.Issue) error {
+func (r *IssueRepository) UpsertMany(ctx context.Context, issues []*entities.Issue) error {
 	if len(issues) == 0 {
 		return nil
 	}

@@ -12,8 +12,8 @@ import (
 	"github.com/thumbrise/autosolve/cmd/cmds"
 	"github.com/thumbrise/autosolve/internal/application"
 	config2 "github.com/thumbrise/autosolve/internal/config"
-	"github.com/thumbrise/autosolve/internal/domain/issue"
-	"github.com/thumbrise/autosolve/internal/domain/repository"
+	"github.com/thumbrise/autosolve/internal/domain/spec/preflights"
+	"github.com/thumbrise/autosolve/internal/domain/spec/workers"
 	"github.com/thumbrise/autosolve/internal/infrastructure/config"
 	"github.com/thumbrise/autosolve/internal/infrastructure/dal/repositories"
 	"github.com/thumbrise/autosolve/internal/infrastructure/dal/sqlcgen"
@@ -42,11 +42,11 @@ func InitializeKernel(contextContext context.Context, reader *config.Reader, log
 	}
 	queries := sqlcgen.New()
 	repositoryRepository := repositories.NewRepositoryRepository(db, queries, logger)
-	validator := repository.NewValidator(githubClient, repositoryRepository, logger)
-	v := application.NewPreflights(validator)
+	repositoryValidator := preflights.NewRepositoryValidator(githubClient, repositoryRepository, logger)
+	v := application.NewPreflights(repositoryValidator)
 	issueRepository := repositories.NewIssueRepository(db, queries, logger)
-	parser := issue.NewParser(configGithub, githubClient, issueRepository, logger)
-	v2 := application.NewWorkers(parser)
+	issuePoller := workers.NewIssuePoller(configGithub, githubClient, issueRepository, logger)
+	v2 := application.NewWorkers(issuePoller)
 	planner := application.NewPlanner(configGithub, v, v2, repositoryRepository)
 	scheduler := application.NewScheduler(planner, logger)
 	schedule := cmds.NewSchedule(scheduler)
