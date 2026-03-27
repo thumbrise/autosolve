@@ -39,5 +39,5 @@ otel:
   exporter:
     endpoint: "localhost:4317"
     protocol: grpc
-    headers: "uptrace-dsn=http://aiji-qvjRjFBnObLuzAkpA@localhost:14318?grpc=14317"
-    timeout: 10s
+    headers: "Authorization=token"
+    timeout: 30s
