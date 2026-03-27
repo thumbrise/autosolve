@@ -98,6 +98,11 @@ type Baseline struct {
 	Classify ClassifierFunc
 }
 
+// isZero reports whether b is the zero-value Baseline (no policies configured).
+func (b *Baseline) isZero() bool {
+	return b.Node == (Policy{}) && b.Service == (Policy{}) && b.Degraded == nil && b.Classify == nil
+}
+
 // Backoff is a convenience constructor for BackoffConfig with sensible defaults.
 // Multiplier defaults to 2.0 (classic exponential backoff).
 //

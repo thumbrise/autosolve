@@ -67,7 +67,10 @@ func NewRunner(opts RunnerOptions) *Runner {
 // Add registers a task for concurrent execution.
 // If Runner has a Baseline configured, it is passed to the task.
 func (r *Runner) Add(task *Task) {
-	task.baseline = &r.opts.Baseline
+	if !r.opts.Baseline.isZero() {
+		task.baseline = &r.opts.Baseline
+	}
+
 	r.tasks = append(r.tasks, task)
 
 	r.logger.Debug("runner: task added",
