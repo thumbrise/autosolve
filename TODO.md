@@ -26,10 +26,10 @@ Runner (longrun)
 Redis-style colons, general to specific:
 
 ```
-preflight:repository:thumbrise/autosolve
-worker:issues:thumbrise/autosolve
-worker:issues:thumbrise/otelext
-worker:comments:thumbrise/autosolve   (future)
+preflight:repository-validator:thumbrise/autosolve
+worker:issue-poller:thumbrise/autosolve
+worker:issue-poller:thumbrise/otelext
+worker:comment-poller:thumbrise/autosolve   (future)
 ```
 
 ## Config changes
