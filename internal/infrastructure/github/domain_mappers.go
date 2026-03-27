@@ -33,7 +33,7 @@ func NewDomainMapper(repoRepo *repositories.RepositoryRepository) *DomainMapper 
 }
 
 func (d *DomainMapper) MapIssues(ctx context.Context, req Request, issues []*github.Issue) ([]*entities.Issue, error) {
-	repositoryID, err := d.repoRepo.GetGithubIDByOwnerAndName(ctx, req.Owner, req.Repository)
+	repositoryID, err := d.repoRepo.GetIDByOwnerAndName(ctx, req.Owner, req.Repository)
 	if err != nil {
 		return nil, err
 	}

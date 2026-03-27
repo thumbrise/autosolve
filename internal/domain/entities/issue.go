@@ -23,11 +23,9 @@ const (
 	IssueStateClosed = "closed"
 )
 
-//nolint:godox // schema reference
-// TODO(v1-epic): Record will be removed when all entities migrate to sqlc-generated models.
-
 type Issue struct {
 	Record
+	// Local ID
 	RepositoryID    int64
 	GithubID        int64
 	Number          int64
@@ -42,9 +40,4 @@ type Issue struct {
 	GithubCreatedAt time.Time
 	GithubUpdatedAt time.Time
 	SyncedAt        time.Time
-	// Relations
-	Repository *Repository
-	Labels     []*Label
-	Assignees  []*User
-	Comments   []*Comment
 }

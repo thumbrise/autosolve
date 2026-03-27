@@ -16,9 +16,6 @@ package entities
 
 import "time"
 
-//nolint:godox // schema reference
-// TODO(v1-epic): Record will be removed when all entities migrate to sqlc-generated models.
-
 type Comment struct {
 	Record
 	IssueID         uint64
@@ -28,6 +25,4 @@ type Comment struct {
 	AuthorGithubID  int64
 	GithubCreatedAt time.Time
 	GithubUpdatedAt time.Time
-	// Relations
-	Issue *Issue
 }
