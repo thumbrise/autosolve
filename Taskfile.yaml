@@ -2,24 +2,28 @@
 version: '3.17'
 
 tasks:
-  c:
+  up:
+    desc: run scheduler
+    cmd: go run . schedule
+
+  infra:
     desc: docker compose arguments. Example [task c -- up -d]. -- required
     cmd: docker compose {{.CLI_ARGS}}
 
-  up:
+  up:infra:
     desc: Up infra
     cmds:
-      - task down
+      - task down:infra
 
-      - task c -- up -d --build --remove-orphans
+      - task infra -- up -d --build --remove-orphans
 
       - docker image prune --force
       - docker container prune --force
 
-  down:
+  down:infra:
     desc: Down infra
     cmds:
-      - task c -- down
+      - task infra -- down
 
   lint:
     desc: Run lint
