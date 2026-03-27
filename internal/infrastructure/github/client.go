@@ -60,9 +60,10 @@ func NewClient(logger *slog.Logger, cfg *config.Github, transport *Transport, do
 // Response.NotModified is true when the server returned 304 (ETag matched).
 //
 // Errors are classified via mapError:
-// transient failures (network, rate limit, 5xx) carry httperr sentinels,
-// permanent failures (401, 404, 422) are returned as-is.
-// Rate limit errors are wrapped in RateLimitError with RetryAfter.
+// rate limits → RateLimitError (implements apierr.Retryable, WaitHinted, ServicePressure),
+// server errors (5xx) → ServerError (implements apierr.Retryable),
+// transport errors → returned as-is (classified by longrun built-in transport classifier),
+// permanent failures (401, 404, 422) → returned as-is.
 func (p *Client) GetMostUpdatedIssues(ctx context.Context, request Request) (Response, error) {
 	ctx, span := tracer.Start(ctx, "Client.GetMostUpdatedIssues")
 	defer span.End()
