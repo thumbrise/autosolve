@@ -14,9 +14,6 @@
 
 package entities
 
-//nolint:godox // schema reference
-// TODO(v1-epic): Record will be removed when all entities migrate to sqlc-generated models.
-
 type Label struct {
 	Record
 	RepositoryID uint64
@@ -24,6 +21,4 @@ type Label struct {
 	Name         string
 	Color        string
 	Description  string
-	// Relations
-	Repository *Repository
 }

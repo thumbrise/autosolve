@@ -16,9 +16,6 @@ package entities
 
 import "time"
 
-//nolint:godox // schema reference
-// TODO(v1-epic): Record will be removed when all entities migrate to sqlc-generated models.
-
 type SyncCursor struct {
 	Record
 	RepositoryID   uint64

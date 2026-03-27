@@ -14,9 +14,6 @@
 
 package entities
 
-//nolint:godox // schema reference
-// TODO(v1-epic): Record will be removed when all entities migrate to sqlc-generated models.
-
 type Repository struct {
 	Record
 	Owner     string

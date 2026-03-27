@@ -32,7 +32,7 @@ func NewRepositoryRepository(db *sql.DB, queries *sqlcgen.Queries, logger *slog.
 	return &RepositoryRepository{db: db, queries: queries, logger: logger}
 }
 
-// Upsert inserts or updates a repository by owner+name and returns its ID.
+// Upsert inserts or updates a repository by owner+name and returns its local ID.
 func (r *RepositoryRepository) Upsert(ctx context.Context, owner, name string) (int64, error) {
 	id, err := r.queries.UpsertRepository(ctx, r.db, sqlcgen.UpsertRepositoryParams{
 		Owner: owner,
@@ -51,8 +51,8 @@ func (r *RepositoryRepository) Upsert(ctx context.Context, owner, name string) (
 	return id, nil
 }
 
-// GetGithubIDByOwnerAndName returns the repository ID for the given owner and name.
-func (r *RepositoryRepository) GetGithubIDByOwnerAndName(ctx context.Context, owner, name string) (int64, error) {
+// GetIDByOwnerAndName returns the local repository ID for the given owner and name.
+func (r *RepositoryRepository) GetIDByOwnerAndName(ctx context.Context, owner, name string) (int64, error) {
 	id, err := r.queries.GetByOwnerName(ctx, r.db, sqlcgen.GetByOwnerNameParams{
 		Owner: owner,
 		Name:  name,
