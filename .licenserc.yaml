@@ -12,6 +12,7 @@ header:
     - '**/*.sh'
 
   paths-ignore:
+    - 'docs/**'
     - 'dist'
     - 'licenses'
     - '**/*.md'
