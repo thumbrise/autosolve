@@ -98,7 +98,7 @@ func (p *Client) GetMostUpdatedIssues(ctx context.Context, request Request) ([]*
 
 	p.writeMetrics(ctx, resp)
 
-	domainIssues, err := p.domainMapper.MapIssues(ctx, request, issues)
+	domainIssues, err := p.domainMapper.MapIssues(issues)
 	if err != nil {
 		return nil, nil, fmt.Errorf("map issues: %w", err)
 	}

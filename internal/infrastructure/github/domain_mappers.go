@@ -15,38 +15,29 @@
 package github
 
 import (
-	"context"
 	"time"
 
 	"github.com/google/go-github/v84/github"
 
 	"github.com/thumbrise/autosolve/internal/domain/entities"
-	"github.com/thumbrise/autosolve/internal/infrastructure/dal/repositories"
 )
 
-type DomainMapper struct {
-	repoRepo *repositories.RepositoryRepository
+type DomainMapper struct{}
+
+func NewDomainMapper() *DomainMapper {
+	return &DomainMapper{}
 }
 
-func NewDomainMapper(repoRepo *repositories.RepositoryRepository) *DomainMapper {
-	return &DomainMapper{repoRepo: repoRepo}
-}
-
-func (d *DomainMapper) MapIssues(ctx context.Context, req Request, issues []*github.Issue) ([]*entities.Issue, error) {
-	repositoryID, err := d.repoRepo.GetIDByOwnerAndName(ctx, req.Owner, req.Repository)
-	if err != nil {
-		return nil, err
-	}
-
+func (d *DomainMapper) MapIssues(issues []*github.Issue) ([]*entities.Issue, error) {
 	domainIssues := make([]*entities.Issue, 0, len(issues))
 	for _, issue := range issues {
-		domainIssues = append(domainIssues, d.MapIssue(repositoryID, issue))
+		domainIssues = append(domainIssues, d.MapIssue(issue))
 	}
 
 	return domainIssues, nil
 }
 
-func (d *DomainMapper) MapIssue(repositoryID int64, issue *github.Issue) *entities.Issue {
+func (d *DomainMapper) MapIssue(issue *github.Issue) *entities.Issue {
 	state := entities.IssueStateOpen
 	if issue.GetState() == "closed" {
 		state = entities.IssueStateClosed
@@ -55,7 +46,6 @@ func (d *DomainMapper) MapIssue(repositoryID int64, issue *github.Issue) *entiti
 	now := time.Now()
 
 	result := &entities.Issue{
-		RepositoryID:    repositoryID,
 		GithubID:        issue.GetID(),
 		Number:          int64(issue.GetNumber()),
 		Title:           issue.GetTitle(),
