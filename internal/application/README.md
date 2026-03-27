@@ -16,8 +16,12 @@ Scheduler
 by the configured repositories, producing ready-to-schedule units with closures
 that capture tenant context (owner, name, cached repoID).
 
-**Planner** also centralizes retry configuration — domain only declares which errors
-are transient (`[]error`), Planner decides how to retry them (max retries, backoff).
+**Planner** also provides `InfraClassifier()` — a `ClassifierFunc` that checks
+`apierr` interfaces (`Retryable`, `WaitHinted`, `ServicePressure`) on errors returned
+by infrastructure clients. Scheduler passes it to Runner's Baseline.
+
+Domain specs are clean — no error knowledge, no retry hints. Retry strategy is
+configured entirely via Baseline on Runner (Node/Service/Degraded policies).
 
 ## Key types
 
