@@ -15,6 +15,8 @@
 package limit
 
 import (
+	"context"
+
 	"golang.org/x/time/rate"
 
 	"github.com/thumbrise/autosolve/internal/config"
@@ -22,8 +24,9 @@ import (
 
 // MinIntervalThrottler wraps rate.Limiter to avoid binding a generic stdlib type in Wire.
 // Burst is always 1 — requests are serialized with a guaranteed minimum interval.
+// Only Wait is exposed — callers cannot mutate rate or burst.
 type MinIntervalThrottler struct {
-	*rate.Limiter
+	limiter *rate.Limiter
 }
 
 // NewMinIntervalThrottler creates a MinIntervalThrottler from config.
@@ -31,5 +34,10 @@ type MinIntervalThrottler struct {
 func NewMinIntervalThrottler(cfg *config.Github) *MinIntervalThrottler {
 	r := rate.Every(cfg.RateLimit.MinInterval)
 
-	return &MinIntervalThrottler{rate.NewLimiter(r, 1)}
+	return &MinIntervalThrottler{limiter: rate.NewLimiter(r, 1)}
+}
+
+// Wait blocks until the rate limiter allows one event or ctx is cancelled.
+func (t *MinIntervalThrottler) Wait(ctx context.Context) error {
+	return t.limiter.Wait(ctx)
 }
