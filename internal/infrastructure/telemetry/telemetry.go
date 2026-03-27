@@ -133,7 +133,9 @@ func (t *Telemetry) Shutdown(ctx context.Context) error {
 }
 
 func (t *Telemetry) doShutdown(ctx context.Context) error {
-	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+	timeout := 30 * time.Second
+
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), timeout)
 	defer cancel()
 
 	var errs error
