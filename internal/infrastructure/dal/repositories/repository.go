@@ -51,8 +51,8 @@ func (r *RepositoryRepository) Upsert(ctx context.Context, owner, name string) (
 	return id, nil
 }
 
-// GetByOwnerName returns the repository ID for the given owner and name.
-func (r *RepositoryRepository) GetByOwnerName(ctx context.Context, owner, name string) (int64, error) {
+// GetGithubIDByOwnerAndName returns the repository ID for the given owner and name.
+func (r *RepositoryRepository) GetGithubIDByOwnerAndName(ctx context.Context, owner, name string) (int64, error) {
 	id, err := r.queries.GetByOwnerName(ctx, r.db, sqlcgen.GetByOwnerNameParams{
 		Owner: owner,
 		Name:  name,
