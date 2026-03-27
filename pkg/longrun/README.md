@@ -109,16 +109,71 @@ err := runner.Wait(ctx)
 ```
 When any task returns a permanent error, Runner cancels all remaining tasks via context, waits for all goroutines to finish, then runs shutdown hooks in LIFO order (reverse of Add).
 
+## Baseline
+
+Baseline is a set of policies that Runner silently applies to every task. Tasks don't know about baseline — it's configured once on Runner.
+
+```go
+runner := longrun.NewRunner(longrun.RunnerOptions{
+    Logger: logger,
+    Baseline: longrun.Baseline{
+        Node:    longrun.Policy{Backoff: longrun.Backoff(2*time.Second, 2*time.Minute)},
+        Service: longrun.Policy{Backoff: longrun.Backoff(5*time.Second, 5*time.Minute)},
+        Degraded: &longrun.Policy{Backoff: longrun.Backoff(30*time.Second, 5*time.Minute)},
+        Classify: infraClassifier,
+    },
+})
+```
+
+### Error categories
+
+| Category | Meaning | Policy |
+|----------|---------|--------|
+| **Node** | Transport-level failure (TCP, DNS, TLS, timeout) | Aggressive retry — network will recover |
+| **Service** | Remote service under pressure (rate limit, 5xx) | Gentle retry — don't kick them while they're down |
+| **Unknown** | Not recognized by any classifier | Degraded policy (if set) or permanent error |
+
+### Classification pipeline
+
+```
+err from work()
+  │
+  ├─ [1] Built-in transport classify (net.OpError, DNS, timeout, EOF → Node)
+  ├─ [2] User classifier via Baseline.Classify (apierr interfaces → Service)
+  └─ [3] Not classified → Unknown
+         Degraded != nil → retry with loud ERROR log
+         Degraded == nil → permanent error
+```
+
+Built-in transport classifier depends only on stdlib. User classifier is application-level (e.g. checks `Retryable`, `WaitHinted`, `ServicePressure` interfaces on errors).
+
+### Degraded mode
+
+Task-level behavior, not Runner-level. When a task gets an unknown error and Degraded policy is set:
+- Retries internally with Degraded backoff
+- Never returns the error to Runner — errgroup contract preserved
+- Logs at ERROR level on every retry
+- Like Docker `restart: always`
+
+When Degraded is nil (e.g. preflights), unknown errors are permanent — crash early, fix your config.
+
+### Wait duration override
+
+When `ClassifierFunc` returns `ErrorClass.WaitDuration > 0`, the task sleeps exactly that duration instead of using exponential backoff. Typical source: `Retry-After` header on HTTP 429.
+
 ## Package structure
 ```
 pkg/longrun/
-├── backoff.go       BackoffConfig, DefaultBackoff(), constants
+├── backoff.go       BackoffConfig, DefaultBackoff(), Backoff() constructor
+├── baseline.go      Baseline, Policy, ErrorCategory, ClassifierFunc, ErrorClass
+├── classify.go      Built-in transport classifier (net, DNS, timeout, EOF)
 ├── matcher.go       Matcher — errors.Is / errors.As pattern matching
+├── metrics.go       OTel metrics (degraded_total, degraded_duration, baseline_retry_total)
 ├── tracker.go       RuleTracker — per-rule retry budget
 ├── rule.go          TransientRule (user config) + ruleState (internal)
 ├── option.go        Functional options (WithTimeout, WithDelay, ...)
-├── task.go          Task, NewOneShotTask, NewIntervalTask, Wait
-├── runner.go        Runner, NewRunner, Add, Wait, LIFO shutdown
+├── task.go          Task, NewOneShotTask, NewIntervalTask, handleFailure pipeline
+├── runner.go        Runner, NewRunner, Add (passes Baseline), Wait, LIFO shutdown
 ├── *_test.go        Blackbox tests (package longrun_test)
 ├── README.md
 └── TODO.md
@@ -140,8 +195,21 @@ Every invocation of the work function is automatically wrapped in an OpenTelemet
 
 Combined with a `slog.Handler` that extracts span context (trace_id, span_id, scope), every log line emitted via `logger.InfoContext(ctx, ...)` is automatically correlated with the active trace — zero boilerplate in business code.
 
+### Metrics
+
+Baseline retries emit OTel metrics (no-op when SDK is not configured):
+
+| Metric | Type | Labels | Purpose |
+|--------|------|--------|---------|
+| `longrun_baseline_retry_total` | Counter | `task`, `category` | Each retry via baseline (node/service/degraded) |
+| `longrun_degraded_total` | Counter | `task` | Each retry in degraded mode |
+| `longrun_degraded_duration_seconds` | Histogram | `task` | Time spent in a single degraded wait |
+
+Enables alerting: "task X in degraded for 10 minutes".
+
 ## Design decisions
-- **Transient errors whitelist** — empty rules = all errors permanent. Lower layers provide sentinel errors, orchestrator decides what to retry.
+- **Baseline + TransientRules** — two layers of retry. Baseline is invisible protection configured on Runner (transport + classifier + degraded). TransientRules are explicit per-task overrides for specific errors. Baseline runs after rules — if no rule matches, baseline classifies.
+- **Transient errors whitelist** — empty rules = all errors permanent (unless baseline is configured). Lower layers provide sentinel errors, orchestrator decides what to retry.
 - **Per-error retry** — different errors can have different MaxRetries and BackoffConfig. Careful retry for loaded external APIs, aggressive retry for local resources.
 - **Own backoff** — `math.Pow` based, no external dependencies.
 - **Signals are not the package's responsibility** — Runner accepts ctx, caller handles signals.
