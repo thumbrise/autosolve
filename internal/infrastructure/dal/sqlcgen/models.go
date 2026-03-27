@@ -92,9 +92,9 @@ type SyncCursor struct {
 	UpdatedAt      *time.Time
 	RepositoryID   int64
 	ResourceType   string
-	SinceUpdatedAt *time.Time
-	NextPage       *int64
-	ETag           *string
+	SinceUpdatedAt time.Time
+	NextPage       int64
+	ETag           string
 }
 
 type User struct {

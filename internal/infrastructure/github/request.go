@@ -12,33 +12,22 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//go:build wireinject
+package github
 
-package bootstrap
+import "time"
 
-import (
-	"context"
-	"log/slog"
+// Cursor carries pagination and conditional-request state for a single API call.
+// Built by the domain layer from SyncCursor; interpreted by Client.
+type Cursor struct {
+	ETag  string
+	Limit int
+	Page  int
+	Since time.Time
+}
 
-	"github.com/google/wire"
-
-	"github.com/thumbrise/autosolve/cmd"
-	"github.com/thumbrise/autosolve/internal"
-	"github.com/thumbrise/autosolve/internal/config"
-	configinfra "github.com/thumbrise/autosolve/internal/infrastructure/config"
-)
-
-func InitializeKernel(
-	_ context.Context,
-	_ *configinfra.Reader,
-	_ *config.Log,
-	_ *slog.Logger,
-) (*Kernel, error) {
-	wire.Build(
-		NewKernel,
-		internal.Bindings,
-		cmd.Bindings,
-	)
-
-	return &Kernel{}, nil
+// Request identifies the repository and cursor for a GitHub API call.
+type Request struct {
+	Owner      string
+	Repository string
+	Cursor     Cursor
 }

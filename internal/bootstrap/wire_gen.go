@@ -12,27 +12,28 @@ import (
 	"github.com/thumbrise/autosolve/cmd/cmds"
 	"github.com/thumbrise/autosolve/internal/application"
 	config2 "github.com/thumbrise/autosolve/internal/config"
-	"github.com/thumbrise/autosolve/internal/domain/issue"
-	"github.com/thumbrise/autosolve/internal/domain/repository"
+	"github.com/thumbrise/autosolve/internal/domain/spec/preflights"
+	"github.com/thumbrise/autosolve/internal/domain/spec/workers"
 	"github.com/thumbrise/autosolve/internal/infrastructure/config"
 	"github.com/thumbrise/autosolve/internal/infrastructure/dal/repositories"
 	"github.com/thumbrise/autosolve/internal/infrastructure/dal/sqlcgen"
 	"github.com/thumbrise/autosolve/internal/infrastructure/database"
 	"github.com/thumbrise/autosolve/internal/infrastructure/github"
-	"github.com/thumbrise/autosolve/internal/infrastructure/telemetry"
+	"github.com/thumbrise/autosolve/internal/infrastructure/limit"
 	"log/slog"
 )
 
 // Injectors from wire.go:
 
-func InitializeKernel(contextContext context.Context, reader *config.Reader, log *config2.Log, logger *slog.Logger, telemetryTelemetry *telemetry.Telemetry) (*Kernel, error) {
+func InitializeKernel(contextContext context.Context, reader *config.Reader, log *config2.Log, logger *slog.Logger) (*Kernel, error) {
 	configGithub, err := config2.NewGithub(contextContext, reader)
 	if err != nil {
 		return nil, err
 	}
-	rateLimiter := github.NewRateLimiter(configGithub)
-	client := github.NewGithubClient(configGithub, rateLimiter)
-	githubClient := github.NewClient(client, logger)
+	minIntervalThrottler := limit.NewMinIntervalThrottler(configGithub)
+	transport := github.NewTransport(minIntervalThrottler)
+	domainMapper := github.NewDomainMapper()
+	client := github.NewClient(logger, configGithub, transport, domainMapper)
 	configDatabase, err := config2.NewDatabase(contextContext, reader)
 	if err != nil {
 		return nil, err
@@ -43,29 +44,30 @@ func InitializeKernel(contextContext context.Context, reader *config.Reader, log
 	}
 	queries := sqlcgen.New()
 	repositoryRepository := repositories.NewRepositoryRepository(db, queries, logger)
-	validator := repository.NewValidator(githubClient, repositoryRepository, logger)
-	v := application.NewPreflights(validator)
+	repositoryValidator := preflights.NewRepositoryValidator(client, repositoryRepository, logger)
+	v := application.NewPreflights(repositoryValidator)
 	issueRepository := repositories.NewIssueRepository(db, queries, logger)
-	parser := issue.NewParser(configGithub, githubClient, issueRepository, logger)
-	v2 := application.NewWorkers(parser)
+	syncCursorRepository := repositories.NewSyncCursorRepository(db, queries, logger)
+	issuePoller := workers.NewIssuePoller(configGithub, client, issueRepository, syncCursorRepository, logger)
+	v2 := application.NewWorkers(issuePoller)
 	planner := application.NewPlanner(configGithub, v, v2, repositoryRepository)
 	scheduler := application.NewScheduler(planner, logger)
 	schedule := cmds.NewSchedule(scheduler)
 	migrate := cmds.NewMigrate()
-	migrator, err := database.NewMigrator(db, logger)
+	migrator, err := database.NewMigrator(db)
 	if err != nil {
 		return nil, err
 	}
-	migrateUp := cmds.NewMigrateUp(migrator)
-	migrateUpFresh := cmds.NewMigrateUpFresh(migrator)
-	migrateDown := cmds.NewMigrateDown(migrator)
+	migrateUp := cmds.NewMigrateUp(migrator, logger)
+	migrateUpFresh := cmds.NewMigrateUpFresh(migrator, logger)
+	migrateDown := cmds.NewMigrateDown(migrator, logger)
 	migrateStatus := cmds.NewMigrateStatus(migrator)
 	migrateCreate := cmds.NewMigrateCreate(migrator)
-	migrateRedo := cmds.NewMigrateRedo(migrator)
+	migrateRedo := cmds.NewMigrateRedo(migrator, logger)
 	test := cmds.NewTest(logger)
 	testSubTree := cmds.NewTestSubTree(logger)
 	v3 := cmd.NewCommands(schedule, migrate, migrateUp, migrateUpFresh, migrateDown, migrateStatus, migrateCreate, migrateRedo, test, testSubTree)
 	root := cmd.NewRoot()
-	kernel := NewKernel(v3, logger, root, db, telemetryTelemetry)
+	kernel := NewKernel(v3, db, logger, root)
 	return kernel, nil
 }

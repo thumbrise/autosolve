@@ -38,10 +38,8 @@ import (
 // Parses ResourceAttributes string ("key1=value1,key2=value2") into attributes.
 // Always includes service.name from config. Merges with telemetry SDK, host, and container detectors.
 func newResource(ctx context.Context, cfg *config.Otel) (*resource.Resource, error) {
-	attrs := []attribute.KeyValue{
-		semconv.ServiceName(cfg.ServiceName),
-	}
-	attrs = append(attrs, parseResourceAttributes(cfg.ResourceAttributes)...)
+	attrs := parseResourceAttributes(cfg.ResourceAttributes)
+	attrs = append(attrs, semconv.ServiceName(cfg.ServiceName))
 
 	return resource.New(ctx,
 		resource.WithAttributes(attrs...),

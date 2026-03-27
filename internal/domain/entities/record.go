@@ -12,33 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//go:build wireinject
+package entities
 
-package bootstrap
+import "time"
 
-import (
-	"context"
-	"log/slog"
-
-	"github.com/google/wire"
-
-	"github.com/thumbrise/autosolve/cmd"
-	"github.com/thumbrise/autosolve/internal"
-	"github.com/thumbrise/autosolve/internal/config"
-	configinfra "github.com/thumbrise/autosolve/internal/infrastructure/config"
-)
-
-func InitializeKernel(
-	_ context.Context,
-	_ *configinfra.Reader,
-	_ *config.Log,
-	_ *slog.Logger,
-) (*Kernel, error) {
-	wire.Build(
-		NewKernel,
-		internal.Bindings,
-		cmd.Bindings,
-	)
-
-	return &Kernel{}, nil
+type Record struct {
+	ID        int64
+	CreatedAt time.Time
+	UpdatedAt time.Time
 }

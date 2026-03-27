@@ -12,20 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package model
+package tenants
 
-import "time"
-
-//nolint:godox // schema reference
-// TODO(v1-epic): Record will be removed when all entities migrate to sqlc-generated models.
-
-type SyncCursor struct {
-	Record
-	RepositoryID   uint64
-	ResourceType   string
-	SinceUpdatedAt time.Time
-	NextPage       int
-	ETag           string
-	// Relations
-	Repository *Repository
+// RepositoryTenant identifies a repository as the current unit of work.
+// All per-repository tasks receive a RepositoryTenant to know which repository they operate on.
+type RepositoryTenant struct {
+	Owner        string
+	Name         string
+	RepositoryID int64
 }

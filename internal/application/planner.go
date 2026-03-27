@@ -75,7 +75,7 @@ func (p *Planner) Preflights() []PreflightUnit {
 				Repo:     r,
 				Rules:    p.buildRules(s.Transients),
 				Work: func(ctx context.Context) error {
-					return s.Work(ctx, tenants.RepoTenant{Owner: r.Owner, Name: r.Name})
+					return s.Work(ctx, tenants.RepositoryTenant{Owner: r.Owner, Name: r.Name})
 				},
 			})
 		}
@@ -104,7 +104,7 @@ func (p *Planner) Workers() []WorkerUnit {
 				Rules:    p.buildRules(s.Transients),
 				Work: func(ctx context.Context) error {
 					if repoID == 0 {
-						id, err := p.repoRepo.GetByOwnerName(ctx, r.Owner, r.Name)
+						id, err := p.repoRepo.GetIDByOwnerAndName(ctx, r.Owner, r.Name)
 						if err != nil {
 							return err
 						}
@@ -112,7 +112,7 @@ func (p *Planner) Workers() []WorkerUnit {
 						repoID = id
 					}
 
-					return s.Work(ctx, tenants.RepoTenant{Owner: r.Owner, Name: r.Name, RepoID: repoID})
+					return s.Work(ctx, tenants.RepositoryTenant{Owner: r.Owner, Name: r.Name, RepositoryID: repoID})
 				},
 			})
 		}

@@ -15,14 +15,14 @@
 package application
 
 import (
-	"github.com/thumbrise/autosolve/internal/domain/issue"
-	"github.com/thumbrise/autosolve/internal/domain/repository"
+	"github.com/thumbrise/autosolve/internal/domain/spec/preflights"
+	"github.com/thumbrise/autosolve/internal/domain/spec/workers"
 )
 
 // NewPreflights registers all preflight tasks.
 // Add new preflights here when extending the system.
 func NewPreflights(
-	repoValidator *repository.Validator,
+	repoValidator *preflights.RepositoryValidator,
 ) []Preflight {
 	return []Preflight{
 		repoValidator,
@@ -32,7 +32,7 @@ func NewPreflights(
 // NewWorkers registers all worker tasks.
 // Add new workers here when extending the system.
 func NewWorkers(
-	issueParser *issue.Parser,
+	issueParser *workers.IssuePoller,
 ) []Worker {
 	return []Worker{
 		issueParser,

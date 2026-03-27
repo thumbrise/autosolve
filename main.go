@@ -4,7 +4,7 @@
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
+//	http://www.apache.org/licenses/LICENSE-2.0
 //
 // Unless required by applicable law or agreed to in writing, software
 // distributed under the License is distributed on an "AS IS" BASIS,
@@ -19,57 +19,64 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"log/slog"
 	"os"
 	"os/signal"
 	"syscall"
 
 	"github.com/thumbrise/autosolve/internal/bootstrap"
+	"github.com/thumbrise/autosolve/internal/infrastructure/telemetry"
 )
 
 func main() {
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	exitCode := 0
 
-	if err := run(ctx); err != nil {
-		log.Println(err)
+	var output bytes.Buffer
 
-		exitCode = 1
-	}
+	code := run(ctx, &output)
 
 	cancel()
-	os.Exit(exitCode)
+
+	if output.Len() > 0 {
+		fmt.Printf("\noutput:\n")
+		fmt.Print(output.String())
+	}
+
+	os.Exit(code)
 }
 
-func run(ctx context.Context) error {
+func run(ctx context.Context, output *bytes.Buffer) int {
 	boot, err := bootstrap.Bootstrap(ctx)
 	if err != nil {
-		return fmt.Errorf("failed to bootstrap: %w", err)
+		log.Printf("failed to bootstrap: %s", err)
+
+		return 1
 	}
+	defer func(Telemetry *telemetry.Telemetry, ctx context.Context) {
+		_ = Telemetry.Shutdown(ctx)
+	}(boot.Telemetry, ctx)
 
 	kernel, err := bootstrap.InitializeKernel(
 		ctx,
 		boot.ConfigReader,
 		boot.ConfigLog,
 		boot.Logger,
-		boot.Telemetry,
 	)
 	if err != nil {
-		return fmt.Errorf("failed initialize kernel: %w", err)
+		return handleError(ctx, boot, fmt.Errorf("failed initialize kernel: %w", err))
 	}
 
-	var output bytes.Buffer
-
-	err = kernel.Execute(ctx, &output)
-
-	// Flush buffered command output after all shutdown hooks completed.
-	// This guarantees logs and command output never interleave.
-	if output.Len() > 0 {
-		fmt.Print(output.String())
-	}
-
+	err = kernel.Execute(ctx, output)
 	if err != nil {
-		return fmt.Errorf("execution failed: %w", err)
+		return handleError(ctx, boot, fmt.Errorf("execution failed: %w", err))
 	}
 
-	return nil
+	return 0
+}
+
+func handleError(ctx context.Context, boot *bootstrap.Boot, err error) int {
+	boot.Logger.ErrorContext(ctx, "fatal error", slog.Any("error", err))
+	log.Println(err)
+
+	return 1
 }

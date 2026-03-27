@@ -12,15 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package model
+package entities
 
-import "time"
-
-//nolint:godox // schema reference
-// TODO(v1-epic): Record will be removed when all entities migrate to sqlc-generated models.
-
-type Record struct {
-	ID        int64
-	CreatedAt time.Time
-	UpdatedAt time.Time
+type Repository struct {
+	Record
+	Owner     string
+	Name      string
+	Enabled   bool
+	LastError *string
 }

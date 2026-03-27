@@ -19,12 +19,13 @@ import (
 
 	"github.com/thumbrise/autosolve/internal/application"
 	"github.com/thumbrise/autosolve/internal/config"
-	"github.com/thumbrise/autosolve/internal/domain/issue"
-	"github.com/thumbrise/autosolve/internal/domain/repository"
+	"github.com/thumbrise/autosolve/internal/domain/spec/preflights"
+	"github.com/thumbrise/autosolve/internal/domain/spec/workers"
 	"github.com/thumbrise/autosolve/internal/infrastructure/dal/repositories"
 	"github.com/thumbrise/autosolve/internal/infrastructure/dal/sqlcgen"
 	"github.com/thumbrise/autosolve/internal/infrastructure/database"
 	"github.com/thumbrise/autosolve/internal/infrastructure/github"
+	"github.com/thumbrise/autosolve/internal/infrastructure/limit"
 )
 
 var Bindings = wire.NewSet(
@@ -35,18 +36,21 @@ var Bindings = wire.NewSet(
 	database.NewMigrator,
 	sqlcgen.New,
 
-	github.NewRateLimiter,
-	github.NewGithubClient,
+	limit.NewMinIntervalThrottler,
+
+	github.NewTransport,
 	github.NewClient,
+	github.NewDomainMapper,
 
 	application.NewScheduler,
 	application.NewPlanner,
 	application.NewPreflights,
 	application.NewWorkers,
 
-	repository.NewValidator,
-	issue.NewParser,
+	preflights.NewRepositoryValidator,
+	workers.NewIssuePoller,
 
 	repositories.NewIssueRepository,
 	repositories.NewRepositoryRepository,
+	repositories.NewSyncCursorRepository,
 )

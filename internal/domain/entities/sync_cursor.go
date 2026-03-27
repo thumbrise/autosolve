@@ -12,18 +12,15 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package model
+package entities
 
-//nolint:godox // schema reference
-// TODO(v1-epic): Record will be removed when all entities migrate to sqlc-generated models.
+import "time"
 
-type Label struct {
+type SyncCursor struct {
 	Record
-	RepositoryID uint64
-	GithubID     int64
-	Name         string
-	Color        string
-	Description  string
-	// Relations
-	Repository *Repository
+	RepositoryID   int64
+	ResourceType   string
+	SinceUpdatedAt time.Time
+	NextPage       int
+	ETag           string
 }

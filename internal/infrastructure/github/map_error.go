@@ -17,6 +17,7 @@ package github
 import (
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/google/go-github/v84/github"
 
@@ -40,19 +41,30 @@ func (p *Client) mapError(err error) error {
 	if err == nil {
 		return nil
 	}
-	// GitHub-специфика: rate limit приходит как 403, а не 429.
-	var rateLimitErr *github.RateLimitError
-	if errors.As(err, &rateLimitErr) {
-		return fmt.Errorf("%w: %w", httperr.ErrRateLimit, err)
+
+	// GitHub-Case: rate limit as 403, not 429.
+	// Wrapped into our RateLimitError so domain never imports go-github.
+	if rl, ok := errors.AsType[*github.RateLimitError](err); ok {
+		return &RateLimitError{
+			RetryAfter: time.Until(rl.Rate.Reset.Time),
+			Err:        fmt.Errorf("%w: %w", httperr.ErrRateLimit, err),
+		}
 	}
 
-	var abuseErr *github.AbuseRateLimitError
-	if errors.As(err, &abuseErr) {
-		return fmt.Errorf("%w: %w", httperr.ErrRateLimit, err)
+	if abuse, ok := errors.AsType[*github.AbuseRateLimitError](err); ok {
+		var retryAfter time.Duration
+		if abuse.RetryAfter != nil {
+			retryAfter = *abuse.RetryAfter
+		}
+
+		return &RateLimitError{
+			RetryAfter: retryAfter,
+			Err:        fmt.Errorf("%w: %w", httperr.ErrRateLimit, err),
+		}
 	}
+
 	// Generic HTTP classification.
-	var ghErr *github.ErrorResponse
-	if errors.As(err, &ghErr) && ghErr.Response != nil {
+	if ghErr, ok := errors.AsType[*github.ErrorResponse](err); ok && ghErr.Response != nil {
 		return httperr.ClassifyStatus(ghErr.Response.StatusCode, err)
 	}
 

@@ -12,12 +12,19 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package tenants
+package github
 
-// RepoTenant identifies a repository as the current unit of work.
-// All per-repository tasks receive a RepoTenant to know which repository they operate on.
-type RepoTenant struct {
-	Owner  string
-	Name   string
-	RepoID int64
-}
+import "go.opentelemetry.io/otel"
+
+const otelLibrary = "github.com/thumbrise/autosolve/internal/infrastructure/github"
+
+var (
+	tracer = otel.Tracer(otelLibrary)
+	meter  = otel.Meter(otelLibrary)
+)
+
+var (
+	metricRateLimitRemains, _  = meter.Int64Gauge("github_api_limit_remains")
+	metricRateLimitUsed, _     = meter.Int64Gauge("github_api_limit_used")
+	metricRateLimitConsumed, _ = meter.Int64Counter("github_api_limit_consumed")
+)

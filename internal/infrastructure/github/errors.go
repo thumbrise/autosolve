@@ -12,33 +12,17 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//go:build wireinject
+package github
 
-package bootstrap
+import "time"
 
-import (
-	"context"
-	"log/slog"
-
-	"github.com/google/wire"
-
-	"github.com/thumbrise/autosolve/cmd"
-	"github.com/thumbrise/autosolve/internal"
-	"github.com/thumbrise/autosolve/internal/config"
-	configinfra "github.com/thumbrise/autosolve/internal/infrastructure/config"
-)
-
-func InitializeKernel(
-	_ context.Context,
-	_ *configinfra.Reader,
-	_ *config.Log,
-	_ *slog.Logger,
-) (*Kernel, error) {
-	wire.Build(
-		NewKernel,
-		internal.Bindings,
-		cmd.Bindings,
-	)
-
-	return &Kernel{}, nil
+// RateLimitError is a domain-visible rate limit error.
+// It carries RetryAfter so the caller can sleep precisely until the limit resets.
+// Does NOT depend on go-github — domain imports only this type.
+type RateLimitError struct {
+	RetryAfter time.Duration
+	Err        error
 }
+
+func (e *RateLimitError) Error() string { return e.Err.Error() }
+func (e *RateLimitError) Unwrap() error { return e.Err }

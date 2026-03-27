@@ -29,11 +29,11 @@ import (
 //
 // Task naming convention: preflight:{Resource}:{owner}/{name}
 // Examples:
-//   - preflight:repository:thumbrise/autosolve
+//   - preflight:repository-validator:thumbrise/autosolve
 type PreflightSpec struct {
 	Resource   string
 	Transients []error
-	Work       func(ctx context.Context, tenant tenants.RepoTenant) error
+	Work       func(ctx context.Context, tenant tenants.RepositoryTenant) error
 }
 
 // WorkerSpec describes a long-running interval task.
@@ -44,11 +44,11 @@ type PreflightSpec struct {
 //
 // Task naming convention: worker:{Resource}:{owner}/{name}
 // Examples:
-//   - worker:issues:thumbrise/autosolve
-//   - worker:comments:thumbrise/otelext
+//   - worker:issue-poller:thumbrise/autosolve
+//   - worker:comment-poller:thumbrise/otelext
 type WorkerSpec struct {
 	Resource   string
 	Interval   time.Duration
 	Transients []error
-	Work       func(ctx context.Context, tenant tenants.RepoTenant) error
+	Work       func(ctx context.Context, tenant tenants.RepositoryTenant) error
 }

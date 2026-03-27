@@ -18,9 +18,8 @@ import (
 	"context"
 	"database/sql"
 	"log/slog"
-	"time"
 
-	"github.com/thumbrise/autosolve/internal/infrastructure/dal/model"
+	"github.com/thumbrise/autosolve/internal/domain/entities"
 	"github.com/thumbrise/autosolve/internal/infrastructure/dal/sqlcgen"
 )
 
@@ -34,7 +33,7 @@ func NewIssueRepository(db *sql.DB, queries *sqlcgen.Queries, logger *slog.Logge
 	return &IssueRepository{db: db, queries: queries, logger: logger}
 }
 
-func (r *IssueRepository) UpsertMany(ctx context.Context, issues []*model.Issue) error {
+func (r *IssueRepository) UpsertMany(ctx context.Context, repositoryID int64, issues []*entities.Issue) error {
 	if len(issues) == 0 {
 		return nil
 	}
@@ -51,7 +50,7 @@ func (r *IssueRepository) UpsertMany(ctx context.Context, issues []*model.Issue)
 
 	for _, iss := range issues {
 		err := r.queries.UpsertIssue(ctx, tx, sqlcgen.UpsertIssueParams{
-			RepositoryID:    iss.RepositoryID,
+			RepositoryID:    repositoryID,
 			GithubID:        iss.GithubID,
 			Number:          iss.Number,
 			Title:           iss.Title,
@@ -74,19 +73,4 @@ func (r *IssueRepository) UpsertMany(ctx context.Context, issues []*model.Issue)
 	}
 
 	return tx.Commit()
-}
-
-func (r *IssueRepository) GetLastUpdateTime(ctx context.Context, repositoryID int64) (time.Time, error) {
-	row, err := r.queries.GetLastUpdateTime(ctx, r.db, repositoryID)
-	if err != nil {
-		return time.Time{}, err
-	}
-
-	r.logger.DebugContext(ctx, "found last update time",
-		"last_update_time", row.GithubUpdatedAt,
-		"github_id", row.GithubID,
-		"repository_id", repositoryID,
-	)
-
-	return row.GithubUpdatedAt, nil
 }

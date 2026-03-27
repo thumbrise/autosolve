@@ -1,0 +1,18 @@
+name: "autosolve"
+
+services:
+  hyperdx:
+    image: docker.hyperdx.io/hyperdx/hyperdx-local:2-beta
+    ports:
+      - "8080:8080"
+      - "4317:4317"
+      - "4318:4318"
+    volumes:
+      - hyperdx_db:/data/db
+      - hyperdx_ch_data:/var/lib/clickhouse
+      - hyperdx_ch_logs:/var/log/clickhouse-server
+    restart: unless-stopped
+volumes:
+  hyperdx_db:
+  hyperdx_ch_data:
+  hyperdx_ch_logs:

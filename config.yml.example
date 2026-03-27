@@ -24,9 +24,9 @@ github:
 # All fields can be overridden via environment variables with AUTOSOLVE_ prefix.
 # Example: otel.serviceName → AUTOSOLVE_OTEL_SERVICENAME
 otel:
+  sdkDisabled: true
   serviceName: autosolve
   resourceAttributes: "service.version=1.0.0,deployment.environment=production"
-  sdkDisabled: false
   propagators: "tracecontext,baggage"
   traces:
     exporter: otlp
@@ -39,5 +39,5 @@ otel:
   exporter:
     endpoint: "localhost:4317"
     protocol: grpc
-    headers: "uptrace-dsn=http://aiji-qvjRjFBnObLuzAkpA@localhost:14318?grpc=14317"
-    timeout: 10s
+    headers: "Authorization=token"
+    timeout: 30s

@@ -3,20 +3,60 @@ version: '3.17'
 
 tasks:
   up:
-    desc: Run scheduler
+    desc: run scheduler
+    cmd: go run . schedule
+
+  infra:
+    desc: docker compose arguments. Example [task c -- up -d]. -- required
+    cmd: docker compose {{.CLI_ARGS}}
+
+  up:infra:
+    desc: Up infra
     cmds:
-      - go run . schedule
+      - task down:infra
+
+      - task infra -- up -d --build --remove-orphans
+
+      - docker image prune --force
+      - docker container prune --force
+
+  down:infra:
+    desc: Down infra
+    cmds:
+      - task infra -- down
 
   lint:
-    desc: Run lint
+    desc: Run lint with auto-fix where possible (dev workflow)
+    cmds:
+      - golangci-lint run --fix
+      - go tool license-eye header fix
+      - task: lint:sql
+
+  lint:sql:
+    desc: Lint and fix SQL migrations
+    cmds:
+      - if which sqlfluff > /dev/null 2>&1; then sqlfluff fix internal/infrastructure/database/migrations/ --config .sqlfluff --dialect sqlite; else echo "sqlfluff not found, skipping SQL lint (pipx install sqlfluff)"; fi
+      - |
+        MATCHES=$(grep -rn 'interface{}' internal/infrastructure/dal/sqlcgen/ --exclude=db.go || true)
+        if [ -n "$MATCHES" ]; then
+          echo "ERROR: sqlc generated interface{} fields — check column types in migrations:"
+          echo "$MATCHES"
+          exit 1
+        else
+          echo "sqlcgen types OK"
+        fi
+
+  lint:ci:
+    desc: Run lint checks without auto-fix (CI workflow)
     cmds:
       - golangci-lint run
       - go tool license-eye dependency check
       - go tool license-eye header check
-      - task: lint:sql
+      - go tool govulncheck ./...
+      - task: lint:sql:ci
 
-  lint:sql:
-    desc: Lint SQL migrations
+  lint:sql:ci:
+    desc: Lint SQL migrations without fix (CI workflow)
     cmds:
       - if which sqlfluff > /dev/null 2>&1; then sqlfluff lint internal/infrastructure/database/migrations/ --config .sqlfluff --dialect sqlite; else echo "sqlfluff not found, skipping SQL lint (pipx install sqlfluff)"; fi
       - |

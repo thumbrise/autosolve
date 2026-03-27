@@ -12,13 +12,17 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package model
+package entities
 
-//nolint:godox // schema reference
-// TODO(v1-epic): Record will be removed when all entities migrate to sqlc-generated models.
+import "time"
 
-type User struct {
+type Comment struct {
 	Record
-	GithubID int64
-	Login    string
+	IssueID         uint64
+	GithubID        int64
+	Body            string
+	AuthorLogin     string
+	AuthorGithubID  int64
+	GithubCreatedAt time.Time
+	GithubUpdatedAt time.Time
 }
