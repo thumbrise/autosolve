@@ -314,7 +314,7 @@ func (t *Task) retryWithRule(ctx context.Context, err error, rs *ruleState) erro
 // When waitOverride > 0, sleeps exactly that duration instead of backoff.
 func (t *Task) retryWithPolicy(ctx context.Context, err error, p *Policy, category ErrorCategory, waitOverride time.Duration, isDegraded bool) error {
 	//nolint:godox // retry budget tracking deferred — baseline policies retry indefinitely for now (zero-value = unlimited).
-	// TODO: track per-policy retry budget (Policy.Retries).
+	// TODO: track per-policy retry budget (Policy.Retries). See #121.
 	attempt := t.baselineAttempts[category]
 	t.baselineAttempts[category]++
 
