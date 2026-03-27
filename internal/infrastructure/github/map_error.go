@@ -40,19 +40,18 @@ func (p *Client) mapError(err error) error {
 	if err == nil {
 		return nil
 	}
-	// GitHub-специфика: rate limit приходит как 403, а не 429.
-	var rateLimitErr *github.RateLimitError
-	if errors.As(err, &rateLimitErr) {
+
+	// GitHub-Case: rate limit as 403, not 429.
+	if _, ok := errors.AsType[*github.RateLimitError](err); ok {
 		return fmt.Errorf("%w: %w", httperr.ErrRateLimit, err)
 	}
 
-	var abuseErr *github.AbuseRateLimitError
-	if errors.As(err, &abuseErr) {
+	if _, ok := errors.AsType[*github.AbuseRateLimitError](err); ok {
 		return fmt.Errorf("%w: %w", httperr.ErrRateLimit, err)
 	}
+
 	// Generic HTTP classification.
-	var ghErr *github.ErrorResponse
-	if errors.As(err, &ghErr) && ghErr.Response != nil {
+	if ghErr, ok := errors.AsType[*github.ErrorResponse](err); ok && ghErr.Response != nil {
 		return httperr.ClassifyStatus(ghErr.Response.StatusCode, err)
 	}
 
