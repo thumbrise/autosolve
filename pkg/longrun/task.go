@@ -263,16 +263,20 @@ func (t *Task) classifyWithBaseline(err error) (*ErrorClass, *Policy) {
 	// [2] User classifier.
 	if t.baseline.Classify != nil {
 		if class := t.baseline.Classify(err); class != nil {
+			p := t.baseline.Degraded
+
 			switch class.Category {
 			case CategoryNode:
-				return class, &t.baseline.Node
+				p = &t.baseline.Node
 			case CategoryService:
-				return class, &t.baseline.Service
-			default:
+				p = &t.baseline.Service
+			case CategoryUnknown:
 				// CategoryUnknown or future categories → Degraded policy.
 				// Preserves class (including WaitDuration) from the classifier.
-				return class, t.baseline.Degraded
+				p = t.baseline.Degraded
 			}
+
+			return class, p
 		}
 	}
 
