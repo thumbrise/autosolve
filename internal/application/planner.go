@@ -104,7 +104,7 @@ func (p *Planner) Workers() []WorkerUnit {
 				Rules:    p.buildRules(s.Transients),
 				Work: func(ctx context.Context) error {
 					if repoID == 0 {
-						id, err := p.repoRepo.GetByOwnerName(ctx, r.Owner, r.Name)
+						id, err := p.repoRepo.GetGithubIDByOwnerAndName(ctx, r.Owner, r.Name)
 						if err != nil {
 							return err
 						}
