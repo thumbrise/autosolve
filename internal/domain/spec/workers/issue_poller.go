@@ -78,7 +78,17 @@ func (p *IssuePoller) Run(ctx context.Context, tenant tenants.RepositoryTenant) 
 		return fmt.Errorf("%w: %w", ErrReadLastUpdate, err)
 	}
 
-	issues, _, err := p.githubClient.GetMostUpdatedIssues(ctx, tenant.Owner, tenant.Name, 50, lastUpdate)
+	req := githubinfra.Request{
+		Owner:      tenant.Owner,
+		Repository: tenant.Name,
+		Cursor: githubinfra.Cursor{
+			Limit: 50,
+			Since: lastUpdate,
+			ETag:  "",
+		},
+	}
+
+	issues, _, err := p.githubClient.GetMostUpdatedIssues(ctx, req)
 	if err != nil {
 		if p.adaptRateLimit(ctx, err) {
 			// rate limit was caught
@@ -90,7 +100,6 @@ func (p *IssuePoller) Run(ctx context.Context, tenant tenants.RepositoryTenant) 
 	}
 
 	if len(issues) == 0 {
-		// noop for now
 		p.adaptPollingInterval(ctx)
 
 		p.logger.InfoContext(ctx, "no new issues found")
@@ -100,7 +109,7 @@ func (p *IssuePoller) Run(ctx context.Context, tenant tenants.RepositoryTenant) 
 
 	p.logger.InfoContext(ctx, "fetched", slog.Int("count", len(issues)))
 
-	err = p.store(ctx, tenant.RepoID, issues)
+	err = p.store(ctx, issues)
 	if err != nil {
 		// SQLite 1 connection pool. Always permanent
 		return fmt.Errorf("%w: %w", ErrStoreIssues, err)
@@ -111,44 +120,8 @@ func (p *IssuePoller) Run(ctx context.Context, tenant tenants.RepositoryTenant) 
 	return nil
 }
 
-func (p *IssuePoller) store(ctx context.Context, repositoryID int64, issues []*github.Issue) error {
-	models := make([]*entities.Issue, 0, len(issues))
-	for _, issue := range issues {
-		models = append(models, p.mapIssueToModel(repositoryID, issue))
-	}
-
-	return p.issueRepository.UpsertMany(ctx, models)
-}
-
-func (p *IssuePoller) mapIssueToModel(repositoryID int64, issue *github.Issue) *entities.Issue {
-	state := entities.IssueStateOpen
-	if issue.GetState() == "closed" {
-		state = entities.IssueStateClosed
-	}
-
-	now := time.Now()
-
-	result := &entities.Issue{
-		RepositoryID:    repositoryID,
-		GithubID:        issue.GetID(),
-		Number:          int64(issue.GetNumber()),
-		Title:           issue.GetTitle(),
-		Body:            issue.GetBody(),
-		State:           state,
-		IsPullRequest:   issue.IsPullRequest(),
-		GithubCreatedAt: issue.GetCreatedAt().Time,
-		GithubUpdatedAt: issue.GetUpdatedAt().Time,
-		SyncedAt:        now,
-	}
-	if issue.PullRequestLinks != nil {
-		result.PRUrl = issue.PullRequestLinks.URL
-		result.PRHtmlUrl = issue.PullRequestLinks.HTMLURL
-		result.PRDiffUrl = issue.PullRequestLinks.DiffURL
-		result.PRPatchUrl = issue.PullRequestLinks.PatchURL
-	}
-	//nolint:godox // milestone temp
-	// TODO: labels and assignees via M:N — separate step
-	return result
+func (p *IssuePoller) store(ctx context.Context, issues []*entities.Issue) error {
+	return p.issueRepository.UpsertMany(ctx, issues)
 }
 
 func (p *IssuePoller) lastUpdate(ctx context.Context, repositoryID int64) (time.Time, error) {
@@ -210,6 +183,8 @@ func (p *IssuePoller) adaptRateLimit(ctx context.Context, err error) bool {
 // adaptPollingInterval adjusts the polling frequency based on data availability.
 // Called when a successful fetch returns zero issues, indicating a quiet period.
 // Reduces GitHub API load by increasing the interval between polls.
+//
+// noop for now
 func (p *IssuePoller) adaptPollingInterval(_ context.Context) {
 	//nolint:godox // noop: will be implemented when adaptive polling is prioritized in https://github.com/thumbrise/autosolve/issues/53
 	// TODO: implement exponential backoff on empty responses, reset to base interval when data appears.

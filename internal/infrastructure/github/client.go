@@ -16,37 +16,41 @@ package github
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"net/http"
-	"time"
 
 	"github.com/google/go-github/v84/github"
 
 	"github.com/thumbrise/autosolve/internal/config"
+	"github.com/thumbrise/autosolve/internal/domain/entities"
 )
 
-func NewGithubClient(cfg *config.Github, limiter *RateLimiter) *github.Client {
+type Client struct {
+	githubClient *github.Client
+	logger       *slog.Logger
+	domainMapper *DomainMapper
+}
+
+func NewClient(logger *slog.Logger, cfg *config.Github, transport *Transport, domainMapper *DomainMapper) *Client {
 	httpClient := &http.Client{
-		Transport: newRateLimitedTransport(http.DefaultTransport, limiter),
+		Transport: transport,
 		Timeout:   cfg.HttpClientTimeout,
 	}
 
-	return github.NewClient(httpClient).WithAuthToken(cfg.Token)
-}
+	githubClient := github.NewClient(httpClient).WithAuthToken(cfg.Token)
 
-type Client struct {
-	client *github.Client
-	logger *slog.Logger
-}
-
-func NewClient(client *github.Client, logger *slog.Logger) *Client {
-	return &Client{client: client, logger: logger}
+	return &Client{
+		githubClient: githubClient,
+		logger:       logger,
+		domainMapper: domainMapper,
+	}
 }
 
 // GetMostUpdatedIssues fetches issues from the given repository,
 // sorted by update time (oldest first).
 //
-// The client is stateless per repository — owner and repo are explicit parameters.
+// The githubClient is stateless per repository — owner and repo are explicit parameters.
 // Rate limiting is handled transparently by the underlying http.RoundTripper.
 //
 // Parameters:
@@ -62,7 +66,15 @@ func NewClient(client *github.Client, logger *slog.Logger) *Client {
 //
 // On success, resp carries HTTP metadata (rate limit headers, pagination).
 // On error, both issues and resp are nil.
-func (p *Client) GetMostUpdatedIssues(ctx context.Context, owner, repo string, count int, since time.Time) ([]*github.Issue, *github.Response, error) {
+func (p *Client) GetMostUpdatedIssues(ctx context.Context, request Request) ([]*entities.Issue, *github.Response, error) {
+	ctx, span := tracer.Start(ctx, "Client.GetMostUpdatedIssues")
+	defer span.End()
+
+	ctx = withETagContext(ctx, request.Cursor.ETag)
+
+	count := request.Cursor.Limit
+	since := request.Cursor.Since
+
 	if count < 1 {
 		count = 50
 
@@ -79,21 +91,33 @@ func (p *Client) GetMostUpdatedIssues(ctx context.Context, owner, repo string, c
 		},
 	}
 
-	issues, resp, err := p.client.Issues.ListByRepo(ctx, owner, repo, opts)
+	issues, resp, err := p.githubClient.Issues.ListByRepo(ctx, request.Owner, request.Repository, opts)
 	if err != nil {
 		return nil, nil, p.mapError(err)
 	}
 
-	return issues, resp, nil
+	p.writeMetrics(ctx, resp)
+
+	domainIssues, err := p.domainMapper.MapIssues(ctx, request, issues)
+	if err != nil {
+		return nil, nil, fmt.Errorf("map issues: %w", err)
+	}
+	// TODO: replace response. isolate domain from google/go-github
+	return domainIssues, resp, nil
 }
 
 // GetRepository fetches repository metadata from GitHub API.
 // Used by preflight to validate repository existence and accessibility.
 func (p *Client) GetRepository(ctx context.Context, owner, repo string) (*github.Repository, error) {
-	r, _, err := p.client.Repositories.Get(ctx, owner, repo)
+	r, _, err := p.githubClient.Repositories.Get(ctx, owner, repo)
 	if err != nil {
 		return nil, p.mapError(err)
 	}
 
 	return r, nil
+}
+
+func (p *Client) writeMetrics(ctx context.Context, resp *github.Response) {
+	metricRateLimitRemains.Record(ctx, int64(resp.Rate.Remaining))
+	metricRateLimitUsed.Record(ctx, int64(resp.Rate.Used))
 }

@@ -25,6 +25,7 @@ import (
 	"github.com/thumbrise/autosolve/internal/infrastructure/dal/sqlcgen"
 	"github.com/thumbrise/autosolve/internal/infrastructure/database"
 	"github.com/thumbrise/autosolve/internal/infrastructure/github"
+	"github.com/thumbrise/autosolve/internal/infrastructure/limit"
 )
 
 var Bindings = wire.NewSet(
@@ -35,9 +36,11 @@ var Bindings = wire.NewSet(
 	database.NewMigrator,
 	sqlcgen.New,
 
-	github.NewRateLimiter,
-	github.NewGithubClient,
+	limit.NewMinIntervalThrottler,
+
+	github.NewTransport,
 	github.NewClient,
+	github.NewDomainMapper,
 
 	application.NewScheduler,
 	application.NewPlanner,
