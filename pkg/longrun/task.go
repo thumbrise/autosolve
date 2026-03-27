@@ -20,7 +20,9 @@ import (
 	"time"
 
 	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/metric"
 )
 
 // WorkFunc is the function that performs the actual work of a task.
@@ -39,7 +41,18 @@ type Task struct {
 	timeout  time.Duration
 	delay    time.Duration
 	rules    []ruleState
+	baseline *Baseline // set by Runner.Add, nil when standalone
 	logger   *slog.Logger
+
+	// baselineAttempts tracks consecutive retry attempts per baseline category.
+	// Indexed by ErrorCategory (CategoryUnknown=0, CategoryNode=1, CategoryService=2).
+	// Used for exponential backoff: attempt N → Backoff.Duration(N).
+	// Reset to zero on successful tick (hadProgress=true) together with rule trackers.
+	//
+	// Example: WiFi drops, 3 consecutive Node errors:
+	//   attempt 0 → 2s, attempt 1 → 4s, attempt 2 → 8s
+	//   WiFi recovers, tick succeeds → all counters reset to 0.
+	baselineAttempts [3]int
 }
 
 // NewOneShotTask creates a task that executes once.
@@ -185,25 +198,89 @@ func (t *Task) runWithPolicy(ctx context.Context) error {
 	}
 }
 
-// handleFailure processes an error: finds a matching rule, checks retry budget,
-// waits for backoff. Returns nil if the caller should retry, or the error to stop.
+// handleFailure processes an error through a linear classification pipeline.
+// Returns nil if the caller should retry, or the error to stop.
 //
-// Retry budget semantics: MaxRetries limits consecutive failures for a given rule.
-// When an interval task completes a successful tick (hadProgress=true), all rule
-// trackers reset to zero — so intermittent failures separated by successful ticks
-// never accumulate toward MaxRetries. For one-shot tasks hadProgress is always false,
-// so the budget is never reset mid-execution.
+// Pipeline:
+//
+//  1. Per-task TransientRules (legacy, explicit error matching)
+//  2. Baseline classification (if baseline is set):
+//     a. Built-in transport classify (net.OpError, timeout → Node)
+//     b. User classifier via Baseline.Classify (apierr interfaces → Service)
+//     c. Not classified → Unknown ->
+//     Unknown + Degraded != nil → retry with Degraded policy (LOUD log)
+//     Unknown + Degraded == nil → permanent error
+//
+// Retry budget semantics: when an interval task completes a successful tick
+// (hadProgress=true), all rule trackers reset to zero — so intermittent failures
+// separated by successful ticks never accumulate toward the retry limit.
 func (t *Task) handleFailure(ctx context.Context, err error, hadProgress bool) error {
-	rs := t.findMatchingRule(err)
-	if rs == nil {
-		// No matching rule → permanent error.
-		return err
-	}
-
 	if hadProgress {
 		t.resetAllRules()
 	}
 
+	// Step 1: per-task TransientRules (explicit error matching).
+	if rs := t.findMatchingRule(err); rs != nil {
+		return t.retryWithRule(ctx, err, rs)
+	}
+
+	// Step 2: baseline classification pipeline.
+	if t.baseline == nil {
+		return err // no baseline, no matching rule → permanent.
+	}
+
+	return t.handleBaselineFailure(ctx, err)
+}
+
+// handleBaselineFailure classifies err via baseline and retries accordingly.
+func (t *Task) handleBaselineFailure(ctx context.Context, err error) error {
+	class, policy := t.classifyWithBaseline(err)
+
+	if policy == nil {
+		// Unknown + no Degraded → permanent error.
+		return err
+	}
+
+	isDegraded := class.Category == CategoryUnknown
+	if isDegraded {
+		t.logger.ErrorContext(ctx, "DEGRADED: unknown error, retrying with degraded policy",
+			slog.Any("error", err),
+		)
+	}
+
+	return t.retryWithPolicy(ctx, err, policy, class.Category, class.WaitDuration, isDegraded)
+}
+
+// classifyWithBaseline runs the classification pipeline and returns the
+// ErrorClass and the matching Policy. Returns nil policy when the error
+// is unknown and Baseline.Degraded is nil.
+func (t *Task) classifyWithBaseline(err error) (*ErrorClass, *Policy) {
+	// [1] Built-in transport classify.
+	if class := classifyTransport(err); class != nil {
+		return class, &t.baseline.Node
+	}
+
+	// [2] User classifier.
+	if t.baseline.Classify != nil {
+		if class := t.baseline.Classify(err); class != nil {
+			switch class.Category {
+			case CategoryNode:
+				return class, &t.baseline.Node
+			case CategoryService:
+				return class, &t.baseline.Service
+			case CategoryUnknown:
+			}
+		}
+	}
+
+	// [3] Unknown.
+	unknown := &ErrorClass{Category: CategoryUnknown}
+
+	return unknown, t.baseline.Degraded // Degraded may be nil → permanent
+}
+
+// retryWithRule retries using a per-task TransientRule (legacy path).
+func (t *Task) retryWithRule(ctx context.Context, err error, rs *ruleState) error {
 	attempt, canRetry := rs.tracker.OnFailure()
 	if !canRetry {
 		t.logger.ErrorContext(ctx, "max retries reached",
@@ -229,6 +306,90 @@ func (t *Task) handleFailure(ctx context.Context, err error, hadProgress bool) e
 	return nil
 }
 
+// retryWithPolicy retries using a baseline Policy.
+// category is used to track per-category attempt count for exponential backoff.
+// When waitOverride > 0, sleeps exactly that duration instead of backoff.
+func (t *Task) retryWithPolicy(ctx context.Context, err error, p *Policy, category ErrorCategory, waitOverride time.Duration, isDegraded bool) error {
+	//nolint:godox // retry budget tracking deferred — baseline policies retry indefinitely for now (zero-value = unlimited).
+	// TODO: track per-policy retry budget (Policy.Retries).
+	attempt := t.baselineAttempts[category]
+	t.baselineAttempts[category]++
+
+	categoryLabel := categoryName(category)
+
+	taskAttr := attribute.String("task", t.name)
+	categoryAttr := attribute.String("category", categoryLabel)
+
+	metricBaselineRetryTotal.Add(ctx, 1, metric.WithAttributes(taskAttr, categoryAttr))
+
+	if isDegraded {
+		metricDegradedTotal.Add(ctx, 1, metric.WithAttributes(taskAttr))
+	}
+
+	level := slog.LevelInfo
+	if isDegraded {
+		level = slog.LevelError
+	}
+
+	var waitDur time.Duration
+
+	if waitOverride > 0 {
+		waitDur = waitOverride
+
+		t.logger.Log(ctx, level, "retrying after explicit wait",
+			slog.Any("error", err),
+			slog.Any("wait", waitDur),
+			slog.Int("attempt", attempt+1),
+		)
+	} else {
+		waitDur = p.Backoff.Duration(attempt)
+
+		t.logger.Log(ctx, level, "retrying with backoff",
+			slog.Any("error", err),
+			slog.Any("backoff", waitDur),
+			slog.Int("attempt", attempt+1),
+		)
+	}
+
+	start := time.Now()
+	result := t.waitDuration(ctx, waitDur)
+
+	if isDegraded {
+		metricDegradedDuration.Record(ctx, time.Since(start).Seconds(), metric.WithAttributes(taskAttr))
+	}
+
+	return result
+}
+
+// categoryName returns a human-readable label for metrics and logs.
+func categoryName(c ErrorCategory) string {
+	switch c {
+	case CategoryUnknown:
+		return "degraded"
+	case CategoryNode:
+		return "node"
+	case CategoryService:
+		return "service"
+	}
+
+	return "degraded"
+}
+
+// waitDuration sleeps for d or until ctx is cancelled.
+// Returns nil on successful wait (caller should retry),
+// nil on context cancellation (next iteration handles it).
+func (t *Task) waitDuration(ctx context.Context, d time.Duration) error {
+	timer := time.NewTimer(d)
+	defer timer.Stop()
+
+	select {
+	case <-ctx.Done():
+		return nil
+	case <-timer.C:
+		return nil
+	}
+}
+
 func (t *Task) findMatchingRule(err error) *ruleState {
 	for i := range t.rules {
 		if t.rules[i].matcher.Match(err) {
@@ -243,6 +404,8 @@ func (t *Task) resetAllRules() {
 	for i := range t.rules {
 		t.rules[i].tracker.Reset()
 	}
+
+	t.baselineAttempts = [3]int{}
 }
 
 // runLoop runs the ticker loop (interval > 0) or a single invocation (one-shot).

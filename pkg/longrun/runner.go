@@ -26,6 +26,11 @@ import (
 type RunnerOptions struct {
 	ShutdownTimeout time.Duration // default 30s
 	Logger          *slog.Logger  // nil = slog.Default()
+
+	// Baseline is a set of policies silently applied to every task.
+	// When set, Runner passes it to each Task at Add time.
+	// Zero value means no baseline — tasks rely solely on their own TransientRules.
+	Baseline Baseline
 }
 
 // Runner orchestrates N tasks. When any task returns a permanent error the
@@ -60,7 +65,9 @@ func NewRunner(opts RunnerOptions) *Runner {
 }
 
 // Add registers a task for concurrent execution.
+// If Runner has a Baseline configured, it is passed to the task.
 func (r *Runner) Add(task *Task) {
+	task.baseline = &r.opts.Baseline
 	r.tasks = append(r.tasks, task)
 
 	r.logger.Debug("runner: task added",
