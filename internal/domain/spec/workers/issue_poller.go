@@ -106,6 +106,13 @@ func (p *IssuePoller) Run(ctx context.Context, tenant tenants.RepositoryTenant) 
 	}
 
 	if len(resp.Issues) == 0 {
+		// Save cursor even on empty page — otherwise catch-up (Page > 1) gets stuck
+		// re-fetching the same empty page forever.
+		// buildNextCursor resets Page to 1 when no more pages remain.
+		if err := p.saveCursor(ctx, tenant.RepositoryID, resp.NextCursor); err != nil {
+			return fmt.Errorf("%w: %w", ErrSaveCursor, err)
+		}
+
 		p.adaptPollingInterval(ctx)
 
 		p.logger.InfoContext(ctx, "no new issues found")
