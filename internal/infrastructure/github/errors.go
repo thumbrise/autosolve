@@ -19,10 +19,28 @@ import "time"
 // RateLimitError is a domain-visible rate limit error.
 // It carries RetryAfter so the caller can sleep precisely until the limit resets.
 // Does NOT depend on go-github — domain imports only this type.
+//
+// Implements apierr.Retryable, apierr.WaitHinted, apierr.ServicePressure.
 type RateLimitError struct {
 	RetryAfter time.Duration
 	Err        error
 }
 
-func (e *RateLimitError) Error() string { return e.Err.Error() }
-func (e *RateLimitError) Unwrap() error { return e.Err }
+func (e *RateLimitError) Error() string               { return e.Err.Error() }
+func (e *RateLimitError) Unwrap() error               { return e.Err }
+func (e *RateLimitError) Retryable() bool             { return true }
+func (e *RateLimitError) WaitDuration() time.Duration { return e.RetryAfter }
+func (e *RateLimitError) ServicePressure() bool       { return true }
+
+// ServerError represents a server-side failure (HTTP 5xx).
+// The server acknowledged the request but failed to process it.
+//
+// Implements apierr.Retryable.
+type ServerError struct {
+	StatusCode int
+	Err        error
+}
+
+func (e *ServerError) Error() string   { return e.Err.Error() }
+func (e *ServerError) Unwrap() error   { return e.Err }
+func (e *ServerError) Retryable() bool { return true }
