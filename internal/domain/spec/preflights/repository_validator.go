@@ -42,12 +42,10 @@ func NewRepositoryValidator(githubClient *githubinfra.Client, repoRepo *reposito
 }
 
 // TaskSpec returns a PreflightSpec that validates and upserts a repository.
-// Any error is permanent — if a repo is inaccessible, the app should not start.
 func (v *RepositoryValidator) TaskSpec() spec.PreflightSpec {
 	return spec.PreflightSpec{
-		Resource:   "repository-validator",
-		Transients: nil, // no retries — all errors are permanent
-		Work:       v.validate,
+		Resource: "repository-validator",
+		Work:     v.validate,
 	}
 }
 

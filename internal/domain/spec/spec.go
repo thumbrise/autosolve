@@ -24,31 +24,29 @@ import (
 // PreflightSpec describes a one-shot task that must complete before workers start.
 // Defined by domain, consumed by Planner.
 //
-// Domain declares which errors are transient via Transients.
-// Planner decides how to retry them (backoff, max retries).
+// Domain is a horse with blinders — it declares work, not retry strategy.
+// Retry is handled by Runner's Baseline (configured by Scheduler).
 //
 // Task naming convention: preflight:{Resource}:{owner}/{name}
 // Examples:
 //   - preflight:repository-validator:thumbrise/autosolve
 type PreflightSpec struct {
-	Resource   string
-	Transients []error
-	Work       func(ctx context.Context, tenant tenants.RepositoryTenant) error
+	Resource string
+	Work     func(ctx context.Context, tenant tenants.RepositoryTenant) error
 }
 
 // WorkerSpec describes a long-running interval task.
 // Defined by domain, consumed by Planner.
 //
-// Domain declares which errors are transient via Transients.
-// Planner decides how to retry them (backoff, max retries).
+// Domain is a horse with blinders — it declares work, not retry strategy.
+// Retry is handled by Runner's Baseline (configured by Scheduler).
 //
 // Task naming convention: worker:{Resource}:{owner}/{name}
 // Examples:
 //   - worker:issue-poller:thumbrise/autosolve
 //   - worker:comment-poller:thumbrise/otelext
 type WorkerSpec struct {
-	Resource   string
-	Interval   time.Duration
-	Transients []error
-	Work       func(ctx context.Context, tenant tenants.RepositoryTenant) error
+	Resource string
+	Interval time.Duration
+	Work     func(ctx context.Context, tenant tenants.RepositoryTenant) error
 }

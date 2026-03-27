@@ -19,7 +19,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"time"
 
 	"github.com/thumbrise/autosolve/internal/config"
 	"github.com/thumbrise/autosolve/internal/domain/entities"
@@ -29,7 +28,6 @@ import (
 	"github.com/thumbrise/autosolve/internal/infrastructure/dal"
 	"github.com/thumbrise/autosolve/internal/infrastructure/dal/repositories"
 	githubinfra "github.com/thumbrise/autosolve/internal/infrastructure/github"
-	"github.com/thumbrise/autosolve/pkg/httperr"
 )
 
 // Sentinel errors for classifying poller failures.
@@ -72,10 +70,9 @@ func NewIssuePoller(
 // TaskSpec returns a WorkerSpec for polling issues.
 func (p *IssuePoller) TaskSpec() spec.WorkerSpec {
 	return spec.WorkerSpec{
-		Resource:   "issue-poller",
-		Interval:   p.cfg.Issues.ParseInterval,
-		Transients: httperr.TransientErrors(),
-		Work:       p.Run,
+		Resource: "issue-poller",
+		Interval: p.cfg.Issues.ParseInterval,
+		Work:     p.Run,
 	}
 }
 
@@ -92,10 +89,6 @@ func (p *IssuePoller) Run(ctx context.Context, tenant tenants.RepositoryTenant) 
 
 	resp, err := p.githubClient.GetMostUpdatedIssues(ctx, p.buildRequest(tenant, cursor))
 	if err != nil {
-		if p.adaptRateLimit(ctx, err) {
-			return nil
-		}
-
 		return fmt.Errorf("%w: %w", ErrFetchIssues, err)
 	}
 
@@ -189,39 +182,6 @@ func (p *IssuePoller) findCursor(ctx context.Context, repositoryID int64) (entit
 	)
 
 	return cursor, nil
-}
-
-// adaptRateLimit pauses execution until the rate limit resets.
-// Uses our RateLimitError (not go-github types) to extract RetryAfter.
-//
-// If err contains *githubinfra.RateLimitError with positive RetryAfter — sleeps and returns true.
-// If RetryAfter is zero — returns false, letting longrun handle retry via exponential backoff.
-// For all other errors — returns false.
-func (p *IssuePoller) adaptRateLimit(ctx context.Context, err error) bool {
-	var rlErr *githubinfra.RateLimitError
-	if !errors.As(err, &rlErr) {
-		return false
-	}
-
-	if rlErr.RetryAfter <= 0 {
-		p.logger.WarnContext(ctx, "rate limit without RetryAfter, falling back to longrun backoff")
-
-		return false
-	}
-
-	p.logger.WarnContext(ctx, "rate limit hit, pausing",
-		slog.Duration("wait", rlErr.RetryAfter),
-	)
-
-	timer := time.NewTimer(rlErr.RetryAfter)
-	defer timer.Stop()
-
-	select {
-	case <-ctx.Done():
-	case <-timer.C:
-	}
-
-	return true
 }
 
 // adaptPollingInterval adjusts the polling frequency based on data availability.
