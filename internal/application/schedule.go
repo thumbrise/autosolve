@@ -18,6 +18,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"time"
 
 	"github.com/thumbrise/autosolve/pkg/longrun"
 )
@@ -50,22 +51,43 @@ func (s *Scheduler) Run(ctx context.Context) error {
 }
 
 func (s *Scheduler) runPreflights(ctx context.Context) error {
-	runner := longrun.NewRunner(longrun.RunnerOptions{Logger: s.logger})
+	runner := longrun.NewRunner(longrun.RunnerOptions{
+		Logger: s.logger,
+		Baseline: longrun.Baseline{
+			// Transport errors — aggressive retry, network will recover.
+			Node: longrun.Policy{Backoff: longrun.Backoff(2*time.Second, 2*time.Minute)},
+			// Service pressure — gentle retry, don't kick them while they're down.
+			Service: longrun.Policy{Backoff: longrun.Backoff(5*time.Second, 5*time.Minute)},
+			// Degraded: nil — unknown errors crash preflights. Fix your config.
+			Classify: s.planner.InfraClassifier(),
+		},
+	})
 
 	for _, u := range s.planner.Preflights() {
 		name := fmt.Sprintf("preflight:%s:%s/%s", u.Resource, u.Repo.Owner, u.Repo.Name)
-		runner.Add(longrun.NewOneShotTask(name, u.Work, u.Rules))
+		runner.Add(longrun.NewOneShotTask(name, u.Work, nil))
 	}
 
 	return runner.Wait(ctx)
 }
 
 func (s *Scheduler) runWorkers(ctx context.Context) error {
-	runner := longrun.NewRunner(longrun.RunnerOptions{Logger: s.logger})
+	runner := longrun.NewRunner(longrun.RunnerOptions{
+		Logger: s.logger,
+		Baseline: longrun.Baseline{
+			// Transport errors — aggressive retry, network will recover.
+			Node: longrun.Policy{Backoff: longrun.Backoff(2*time.Second, 2*time.Minute)},
+			// Service pressure — gentle retry, don't kick them while they're down.
+			Service: longrun.Policy{Backoff: longrun.Backoff(5*time.Second, 5*time.Minute)},
+			// Unknown errors — don't crash, scream loudly, retry with big backoff.
+			Degraded: &longrun.Policy{Backoff: longrun.Backoff(30*time.Second, 5*time.Minute)},
+			Classify: s.planner.InfraClassifier(),
+		},
+	})
 
 	for _, u := range s.planner.Workers() {
 		name := fmt.Sprintf("worker:%s:%s/%s", u.Resource, u.Repo.Owner, u.Repo.Name)
-		runner.Add(longrun.NewIntervalTask(name, u.Interval, u.Work, u.Rules))
+		runner.Add(longrun.NewIntervalTask(name, u.Interval, u.Work, nil))
 	}
 
 	return runner.Wait(ctx)

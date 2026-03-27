@@ -16,9 +16,11 @@ package application
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"github.com/thumbrise/autosolve/internal/config"
+	"github.com/thumbrise/autosolve/internal/contracts/apierr"
 	"github.com/thumbrise/autosolve/internal/domain/spec/tenants"
 	"github.com/thumbrise/autosolve/internal/infrastructure/dal/repositories"
 	"github.com/thumbrise/autosolve/pkg/longrun"
@@ -28,7 +30,6 @@ import (
 type PreflightUnit struct {
 	Resource string
 	Repo     config.Repository
-	Rules    []longrun.TransientRule
 	Work     longrun.WorkFunc
 }
 
@@ -37,7 +38,6 @@ type WorkerUnit struct {
 	Resource string
 	Repo     config.Repository
 	Interval time.Duration
-	Rules    []longrun.TransientRule
 	Work     longrun.WorkFunc
 }
 
@@ -73,7 +73,6 @@ func (p *Planner) Preflights() []PreflightUnit {
 			units = append(units, PreflightUnit{
 				Resource: s.Resource,
 				Repo:     r,
-				Rules:    p.buildRules(s.Transients),
 				Work: func(ctx context.Context) error {
 					return s.Work(ctx, tenants.RepositoryTenant{Owner: r.Owner, Name: r.Name})
 				},
@@ -101,7 +100,6 @@ func (p *Planner) Workers() []WorkerUnit {
 				Resource: s.Resource,
 				Repo:     r,
 				Interval: s.Interval,
-				Rules:    p.buildRules(s.Transients),
 				Work: func(ctx context.Context) error {
 					if repoID == 0 {
 						id, err := p.repoRepo.GetIDByOwnerAndName(ctx, r.Owner, r.Name)
@@ -121,14 +119,34 @@ func (p *Planner) Workers() []WorkerUnit {
 	return units
 }
 
-const defaultMaxRetries = 5
+// InfraClassifier returns a ClassifierFunc that checks apierr interfaces
+// on errors returned by infrastructure clients.
+//
+// Classification:
+//   - apierr.WaitHinted with positive WaitDuration → Service + explicit wait
+//   - apierr.ServicePressure → Service
+//   - apierr.Retryable → Service
+//   - unknown → nil (let baseline handle as Unknown/Degraded)
+func (p *Planner) InfraClassifier() longrun.ClassifierFunc {
+	return func(err error) *longrun.ErrorClass {
+		var wh apierr.WaitHinted
+		if errors.As(err, &wh) && wh.WaitDuration() > 0 {
+			return &longrun.ErrorClass{
+				Category:     longrun.CategoryService,
+				WaitDuration: wh.WaitDuration(),
+			}
+		}
 
-// buildRules converts domain transient errors into longrun retry rules.
-// Retry configuration is centralized here — domain only declares which errors are transient.
-func (p *Planner) buildRules(transients []error) []longrun.TransientRule {
-	if len(transients) == 0 {
+		var sp apierr.ServicePressure
+		if errors.As(err, &sp) && sp.ServicePressure() {
+			return &longrun.ErrorClass{Category: longrun.CategoryService}
+		}
+
+		var rt apierr.Retryable
+		if errors.As(err, &rt) && rt.Retryable() {
+			return &longrun.ErrorClass{Category: longrun.CategoryService}
+		}
+
 		return nil
 	}
-
-	return longrun.TransientGroup(defaultMaxRetries, longrun.DefaultBackoff(), transients...)
 }
