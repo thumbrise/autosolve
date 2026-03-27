@@ -12,15 +12,17 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package entities
+package github
 
 import "time"
 
-type SyncCursor struct {
-	Record
-	RepositoryID   int64
-	ResourceType   string
-	SinceUpdatedAt time.Time
-	NextPage       int
-	ETag           string
+// RateLimitError is a domain-visible rate limit error.
+// It carries RetryAfter so the caller can sleep precisely until the limit resets.
+// Does NOT depend on go-github — domain imports only this type.
+type RateLimitError struct {
+	RetryAfter time.Duration
+	Err        error
 }
+
+func (e *RateLimitError) Error() string { return e.Err.Error() }
+func (e *RateLimitError) Unwrap() error { return e.Err }

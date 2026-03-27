@@ -16,6 +16,7 @@ package github
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -25,6 +26,8 @@ import (
 	"github.com/thumbrise/autosolve/internal/config"
 	"github.com/thumbrise/autosolve/internal/domain/entities"
 )
+
+var ErrUnexpectedNilResponse = errors.New("go-github returned nil response without error")
 
 type Client struct {
 	githubClient *github.Client
@@ -50,23 +53,17 @@ func NewClient(logger *slog.Logger, cfg *config.Github, transport *Transport, do
 // GetMostUpdatedIssues fetches issues from the given repository,
 // sorted by update time (oldest first).
 //
-// The githubClient is stateless per repository — owner and repo are explicit parameters.
+// The client is stateless per repository — owner and repo come from Request.
 // Rate limiting is handled transparently by the underlying http.RoundTripper.
 //
-// Parameters:
-//   - owner: repository owner (e.g. "thumbrise").
-//   - repo: repository name (e.g. "autosolve").
-//   - count: maximum number of issues to return per page. Values < 1 default to 50.
-//   - since: only issues updated after this time are returned. Zero value fetches all.
+// Returns a domain-facing Response that never exposes go-github types.
+// Response.NotModified is true when the server returned 304 (ETag matched).
 //
 // Errors are classified via mapError:
 // transient failures (network, rate limit, 5xx) carry httperr sentinels,
 // permanent failures (401, 404, 422) are returned as-is.
-// The original GitHub error is preserved in the chain for errors.As access.
-//
-// On success, resp carries HTTP metadata (rate limit headers, pagination).
-// On error, both issues and resp are nil.
-func (p *Client) GetMostUpdatedIssues(ctx context.Context, request Request) ([]*entities.Issue, *github.Response, error) {
+// Rate limit errors are wrapped in RateLimitError with RetryAfter.
+func (p *Client) GetMostUpdatedIssues(ctx context.Context, request Request) (Response, error) {
 	ctx, span := tracer.Start(ctx, "Client.GetMostUpdatedIssues")
 	defer span.End()
 
@@ -74,11 +71,16 @@ func (p *Client) GetMostUpdatedIssues(ctx context.Context, request Request) ([]*
 
 	count := request.Cursor.Limit
 	since := request.Cursor.Since
+	page := request.Cursor.Page
 
 	if count < 1 {
 		count = 50
 
 		p.logger.WarnContext(ctx, "GetMostUpdatedIssues: count < 1")
+	}
+
+	if page < 1 {
+		page = 1
 	}
 
 	opts := &github.IssueListByRepoOptions{
@@ -87,6 +89,7 @@ func (p *Client) GetMostUpdatedIssues(ctx context.Context, request Request) ([]*
 		Direction: "asc",
 		Since:     since,
 		ListOptions: github.ListOptions{
+			Page:    page,
 			PerPage: count,
 		},
 	}
@@ -94,16 +97,57 @@ func (p *Client) GetMostUpdatedIssues(ctx context.Context, request Request) ([]*
 	issues, resp, err := p.githubClient.Issues.ListByRepo(ctx, request.Owner, request.Repository, opts)
 	p.writeMetrics(ctx, resp)
 
+	// go-github returns a non-nil error on 304 Not Modified.
+	// Check resp first — 304 is not an error, it means data is unchanged and rate limit is not consumed.
+	if resp != nil && resp.StatusCode == http.StatusNotModified {
+		return Response{NotModified: true}, nil
+	}
+
 	if err != nil {
-		return nil, nil, p.mapError(err)
+		return Response{}, p.mapError(err)
+	}
+
+	if resp == nil {
+		return Response{}, ErrUnexpectedNilResponse
 	}
 
 	domainIssues, err := p.domainMapper.MapIssues(issues)
 	if err != nil {
-		return nil, nil, fmt.Errorf("map issues: %w", err)
+		return Response{}, fmt.Errorf("map issues: %w", err)
 	}
-	// TODO: replace response. isolate domain from google/go-github
-	return domainIssues, resp, nil
+
+	return Response{
+		Issues:     domainIssues,
+		NextCursor: p.buildNextCursor(request.Cursor, domainIssues, resp),
+	}, nil
+}
+
+// buildNextCursor computes the cursor for the next request based on pagination state.
+//
+// Two modes:
+//   - catch-up: resp.NextPage > 0 → more pages remain, keep same Since, advance Page, clear ETag.
+//   - steady-state: last page reached → advance Since to last issue's UpdatedAt, reset Page to 1, store ETag.
+func (p *Client) buildNextCursor(prev Cursor, issues []*entities.Issue, resp *github.Response) Cursor {
+	if resp.NextPage > 0 {
+		return Cursor{
+			Since: prev.Since,
+			Page:  resp.NextPage,
+			Limit: prev.Limit,
+			ETag:  "",
+		}
+	}
+
+	newSince := prev.Since
+	if len(issues) > 0 {
+		newSince = issues[len(issues)-1].GithubUpdatedAt
+	}
+
+	return Cursor{
+		Since: newSince,
+		Page:  1,
+		Limit: prev.Limit,
+		ETag:  resp.Header.Get("ETag"),
+	}
 }
 
 // GetRepository fetches repository metadata from GitHub API.

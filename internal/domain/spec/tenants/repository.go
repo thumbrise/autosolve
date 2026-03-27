@@ -17,7 +17,7 @@ package tenants
 // RepositoryTenant identifies a repository as the current unit of work.
 // All per-repository tasks receive a RepositoryTenant to know which repository they operate on.
 type RepositoryTenant struct {
-	Owner  string
-	Name   string
-	RepoID int64
+	Owner        string
+	Name         string
+	RepositoryID int64
 }

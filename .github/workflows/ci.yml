@@ -43,7 +43,7 @@ jobs:
           version: ${{ env.TASK_VERSION }}
 
       - name: Run lint
-        run: task lint
+        run: task lint:ci
 
   test:
     name: Test source code

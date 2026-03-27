@@ -18,7 +18,6 @@ import (
 	"context"
 	"database/sql"
 	"log/slog"
-	"time"
 
 	"github.com/thumbrise/autosolve/internal/domain/entities"
 	"github.com/thumbrise/autosolve/internal/infrastructure/dal/sqlcgen"
@@ -74,19 +73,4 @@ func (r *IssueRepository) UpsertMany(ctx context.Context, repositoryID int64, is
 	}
 
 	return tx.Commit()
-}
-
-func (r *IssueRepository) GetLastUpdateTime(ctx context.Context, repositoryID int64) (time.Time, error) {
-	row, err := r.queries.GetLastUpdateTime(ctx, r.db, repositoryID)
-	if err != nil {
-		return time.Time{}, err
-	}
-
-	r.logger.DebugContext(ctx, "found last update time",
-		"last_update_time", row.GithubUpdatedAt,
-		"github_id", row.GithubID,
-		"repository_id", repositoryID,
-	)
-
-	return row.GithubUpdatedAt, nil
 }

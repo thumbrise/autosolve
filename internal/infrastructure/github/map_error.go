@@ -17,6 +17,7 @@ package github
 import (
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/google/go-github/v84/github"
 
@@ -42,12 +43,24 @@ func (p *Client) mapError(err error) error {
 	}
 
 	// GitHub-Case: rate limit as 403, not 429.
-	if _, ok := errors.AsType[*github.RateLimitError](err); ok {
-		return fmt.Errorf("%w: %w", httperr.ErrRateLimit, err)
+	// Wrapped into our RateLimitError so domain never imports go-github.
+	if rl, ok := errors.AsType[*github.RateLimitError](err); ok {
+		return &RateLimitError{
+			RetryAfter: time.Until(rl.Rate.Reset.Time),
+			Err:        fmt.Errorf("%w: %w", httperr.ErrRateLimit, err),
+		}
 	}
 
-	if _, ok := errors.AsType[*github.AbuseRateLimitError](err); ok {
-		return fmt.Errorf("%w: %w", httperr.ErrRateLimit, err)
+	if abuse, ok := errors.AsType[*github.AbuseRateLimitError](err); ok {
+		var retryAfter time.Duration
+		if abuse.RetryAfter != nil {
+			retryAfter = *abuse.RetryAfter
+		}
+
+		return &RateLimitError{
+			RetryAfter: retryAfter,
+			Err:        fmt.Errorf("%w: %w", httperr.ErrRateLimit, err),
+		}
 	}
 
 	// Generic HTTP classification.

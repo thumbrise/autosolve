@@ -21,11 +21,10 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/google/go-github/v84/github"
-
 	"github.com/thumbrise/autosolve/internal/config"
 	"github.com/thumbrise/autosolve/internal/domain/entities"
 	"github.com/thumbrise/autosolve/internal/domain/spec"
+	"github.com/thumbrise/autosolve/internal/domain/spec/resources"
 	"github.com/thumbrise/autosolve/internal/domain/spec/tenants"
 	"github.com/thumbrise/autosolve/internal/infrastructure/dal"
 	"github.com/thumbrise/autosolve/internal/infrastructure/dal/repositories"
@@ -33,12 +32,13 @@ import (
 	"github.com/thumbrise/autosolve/pkg/httperr"
 )
 
-// Sentinel errors for classifying parser failures.
+// Sentinel errors for classifying poller failures.
 // Callers can use these with errors.Is to decide retry strategy.
 var (
-	ErrFetchIssues    = errors.New("fetch issues")
-	ErrStoreIssues    = errors.New("store issues")
-	ErrReadLastUpdate = errors.New("read last update")
+	ErrFetchIssues = errors.New("fetch issues")
+	ErrStoreIssues = errors.New("store issues")
+	ErrReadCursor  = errors.New("read cursor")
+	ErrSaveCursor  = errors.New("save cursor")
 )
 
 // IssuePoller fetches and stores issues for a repository.
@@ -46,14 +46,27 @@ var (
 // via RepositoryTenant at each invocation.
 // Implements application.Worker via TaskSpec().
 type IssuePoller struct {
-	githubClient    *githubinfra.Client
-	logger          *slog.Logger
-	issueRepository *repositories.IssueRepository
-	cfg             *config.Github
+	githubClient *githubinfra.Client
+	logger       *slog.Logger
+	issueRepo    *repositories.IssueRepository
+	cursorRepo   *repositories.SyncCursorRepository
+	cfg          *config.Github
 }
 
-func NewIssuePoller(cfg *config.Github, githubClient *githubinfra.Client, issueRepository *repositories.IssueRepository, logger *slog.Logger) *IssuePoller {
-	return &IssuePoller{cfg: cfg, githubClient: githubClient, issueRepository: issueRepository, logger: logger}
+func NewIssuePoller(
+	cfg *config.Github,
+	githubClient *githubinfra.Client,
+	issueRepo *repositories.IssueRepository,
+	cursorRepo *repositories.SyncCursorRepository,
+	logger *slog.Logger,
+) *IssuePoller {
+	return &IssuePoller{
+		cfg:          cfg,
+		githubClient: githubClient,
+		issueRepo:    issueRepo,
+		cursorRepo:   cursorRepo,
+		logger:       logger,
+	}
 }
 
 // TaskSpec returns a WorkerSpec for polling issues.
@@ -72,34 +85,27 @@ func (p *IssuePoller) Run(ctx context.Context, tenant tenants.RepositoryTenant) 
 		slog.String("name", tenant.Name),
 	)
 
-	lastUpdate, err := p.lastUpdate(ctx, tenant.RepoID)
+	cursor, err := p.findCursor(ctx, tenant.RepositoryID)
 	if err != nil {
-		// SQLLite 1 connection pool. Always permanent
-		return fmt.Errorf("%w: %w", ErrReadLastUpdate, err)
+		return fmt.Errorf("%w: %w", ErrReadCursor, err)
 	}
 
-	req := githubinfra.Request{
-		Owner:      tenant.Owner,
-		Repository: tenant.Name,
-		Cursor: githubinfra.Cursor{
-			Limit: 50,
-			Since: lastUpdate,
-			ETag:  "",
-		},
-	}
-
-	issues, _, err := p.githubClient.GetMostUpdatedIssues(ctx, req)
+	resp, err := p.githubClient.GetMostUpdatedIssues(ctx, p.buildRequest(tenant, cursor))
 	if err != nil {
 		if p.adaptRateLimit(ctx, err) {
-			// rate limit was caught
-			// just waiting next tick
 			return nil
 		}
 
-		return fmt.Errorf("%w: list by repo: %w", ErrFetchIssues, err)
+		return fmt.Errorf("%w: %w", ErrFetchIssues, err)
 	}
 
-	if len(issues) == 0 {
+	if resp.NotModified {
+		p.logger.InfoContext(ctx, "not modified, skipping")
+
+		return nil
+	}
+
+	if len(resp.Issues) == 0 {
 		p.adaptPollingInterval(ctx)
 
 		p.logger.InfoContext(ctx, "no new issues found")
@@ -107,69 +113,100 @@ func (p *IssuePoller) Run(ctx context.Context, tenant tenants.RepositoryTenant) 
 		return nil
 	}
 
-	p.logger.InfoContext(ctx, "fetched", slog.Int("count", len(issues)))
+	p.logger.InfoContext(ctx, "fetched", slog.Int("count", len(resp.Issues)))
 
-	err = p.store(ctx, tenant.RepoID, issues)
-	if err != nil {
-		// SQLite 1 connection pool. Always permanent
+	if err := p.issueRepo.UpsertMany(ctx, tenant.RepositoryID, resp.Issues); err != nil {
 		return fmt.Errorf("%w: %w", ErrStoreIssues, err)
 	}
 
-	p.logger.InfoContext(ctx, "stored", slog.Int("count", len(issues)))
+	if err := p.saveCursor(ctx, tenant.RepositoryID, resp.NextCursor); err != nil {
+		return fmt.Errorf("%w: %w", ErrSaveCursor, err)
+	}
+
+	p.logger.InfoContext(ctx, "stored", slog.Int("count", len(resp.Issues)))
 
 	return nil
 }
 
-func (p *IssuePoller) store(ctx context.Context, repositoryID int64, issues []*entities.Issue) error {
-	return p.issueRepository.UpsertMany(ctx, repositoryID, issues)
-}
-
-func (p *IssuePoller) lastUpdate(ctx context.Context, repositoryID int64) (time.Time, error) {
-	res, err := p.issueRepository.GetLastUpdateTime(ctx, repositoryID)
-	if err != nil {
-		if dal.IsNotFound(err) {
-			return time.Time{}, nil
-		}
-
-		return time.Time{}, err
+func (p *IssuePoller) buildRequest(tenant tenants.RepositoryTenant, cursor entities.SyncCursor) githubinfra.Request {
+	req := githubinfra.Request{
+		Owner:      tenant.Owner,
+		Repository: tenant.Name,
+		Cursor: githubinfra.Cursor{
+			Limit: 50,
+			Page:  cursor.NextPage,
+			Since: cursor.SinceUpdatedAt,
+		},
 	}
 
-	return res.Add(1 * time.Second), nil
+	// ETag only in steady-state (page 1). During catch-up ETag is invalid for other pages.
+	isCatchUp := cursor.NextPage > 1
+	if !isCatchUp {
+		req.Cursor.ETag = cursor.ETag
+	}
+
+	return req
+}
+
+func (p *IssuePoller) saveCursor(ctx context.Context, repositoryID int64, next githubinfra.Cursor) error {
+	return p.cursorRepo.Save(ctx, entities.SyncCursor{
+		RepositoryID:   repositoryID,
+		ResourceType:   string(resources.Issue),
+		SinceUpdatedAt: next.Since,
+		NextPage:       next.Page,
+		ETag:           next.ETag,
+	})
+}
+
+// findCursor loads the sync cursor from the database.
+// Returns a zero-value SyncCursor when no cursor exists yet (first run).
+func (p *IssuePoller) findCursor(ctx context.Context, repositoryID int64) (entities.SyncCursor, error) {
+	cursor, err := p.cursorRepo.Find(ctx, repositoryID, resources.Issue)
+	if err != nil {
+		if dal.IsNotFound(err) {
+			p.logger.DebugContext(ctx, "cursor not found, starting from scratch",
+				slog.Int64("repositoryId", repositoryID),
+			)
+
+			return entities.SyncCursor{}, nil
+		}
+
+		return entities.SyncCursor{}, err
+	}
+
+	p.logger.DebugContext(ctx, "cursor found",
+		slog.Int64("repositoryId", repositoryID),
+		slog.Time("since", cursor.SinceUpdatedAt),
+		slog.Int("nextPage", cursor.NextPage),
+		slog.String("etag", cursor.ETag),
+	)
+
+	return cursor, nil
 }
 
 // adaptRateLimit pauses execution until the rate limit resets.
-// Called when the GitHub API returns a rate limit error.
-// The original error is available in the chain via errors.As
-// for accessing reset time and remaining quota.
+// Uses our RateLimitError (not go-github types) to extract RetryAfter.
 //
-// If err is *github.RateLimitError or *github.AbuseRateLimitError (with RetryAfter set) then returns true after sleeping.
-// If err is *github.AbuseRateLimitError without RetryAfter, returns false to let the caller handle retry via exponential backoff.
-// For all other errors, returns false and you should handle original error.
+// If err contains *githubinfra.RateLimitError with positive RetryAfter — sleeps and returns true.
+// If RetryAfter is zero — returns false, letting longrun handle retry via exponential backoff.
+// For all other errors — returns false.
 func (p *IssuePoller) adaptRateLimit(ctx context.Context, err error) bool {
-	var (
-		wait     time.Duration
-		rlErr    *github.RateLimitError
-		abuseErr *github.AbuseRateLimitError
-	)
-
-	switch {
-	case errors.As(err, &rlErr):
-		wait = time.Until(rlErr.Rate.Reset.Time)
-	case errors.As(err, &abuseErr) && abuseErr.RetryAfter != nil:
-		wait = *abuseErr.RetryAfter
-	case errors.As(err, &abuseErr):
-		p.logger.WarnContext(ctx, "abuse rate limit hit without RetryAfter header, falling back to exponential backoff")
-
+	var rlErr *githubinfra.RateLimitError
+	if !errors.As(err, &rlErr) {
 		return false
-	default:
+	}
+
+	if rlErr.RetryAfter <= 0 {
+		p.logger.WarnContext(ctx, "rate limit without RetryAfter, falling back to longrun backoff")
+
 		return false
 	}
 
 	p.logger.WarnContext(ctx, "rate limit hit, pausing",
-		slog.Duration("wait", wait),
+		slog.Duration("wait", rlErr.RetryAfter),
 	)
 
-	timer := time.NewTimer(wait)
+	timer := time.NewTimer(rlErr.RetryAfter)
 	defer timer.Stop()
 
 	select {
