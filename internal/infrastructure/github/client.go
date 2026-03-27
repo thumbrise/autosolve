@@ -92,11 +92,11 @@ func (p *Client) GetMostUpdatedIssues(ctx context.Context, request Request) ([]*
 	}
 
 	issues, resp, err := p.githubClient.Issues.ListByRepo(ctx, request.Owner, request.Repository, opts)
+	p.writeMetrics(ctx, resp)
+
 	if err != nil {
 		return nil, nil, p.mapError(err)
 	}
-
-	p.writeMetrics(ctx, resp)
 
 	domainIssues, err := p.domainMapper.MapIssues(issues)
 	if err != nil {
@@ -118,6 +118,10 @@ func (p *Client) GetRepository(ctx context.Context, owner, repo string) (*github
 }
 
 func (p *Client) writeMetrics(ctx context.Context, resp *github.Response) {
+	if resp == nil {
+		return
+	}
+
 	metricRateLimitRemains.Record(ctx, int64(resp.Rate.Remaining))
 	metricRateLimitUsed.Record(ctx, int64(resp.Rate.Used))
 }
