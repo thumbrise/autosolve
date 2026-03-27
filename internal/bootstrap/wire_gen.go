@@ -19,6 +19,7 @@ import (
 	"github.com/thumbrise/autosolve/internal/infrastructure/dal/sqlcgen"
 	"github.com/thumbrise/autosolve/internal/infrastructure/database"
 	"github.com/thumbrise/autosolve/internal/infrastructure/github"
+	"github.com/thumbrise/autosolve/internal/infrastructure/limit"
 	"log/slog"
 )
 
@@ -29,9 +30,8 @@ func InitializeKernel(contextContext context.Context, reader *config.Reader, log
 	if err != nil {
 		return nil, err
 	}
-	rateLimiter := github.NewRateLimiter(configGithub)
-	client := github.NewGithubClient(configGithub, rateLimiter)
-	githubClient := github.NewClient(client, logger)
+	minIntervalThrottler := limit.NewMinIntervalThrottler(configGithub)
+	transport := github.NewTransport(minIntervalThrottler)
 	configDatabase, err := config2.NewDatabase(contextContext, reader)
 	if err != nil {
 		return nil, err
@@ -42,10 +42,12 @@ func InitializeKernel(contextContext context.Context, reader *config.Reader, log
 	}
 	queries := sqlcgen.New()
 	repositoryRepository := repositories.NewRepositoryRepository(db, queries, logger)
-	repositoryValidator := preflights.NewRepositoryValidator(githubClient, repositoryRepository, logger)
+	domainMapper := github.NewDomainMapper(repositoryRepository)
+	client := github.NewClient(logger, configGithub, transport, domainMapper)
+	repositoryValidator := preflights.NewRepositoryValidator(client, repositoryRepository, logger)
 	v := application.NewPreflights(repositoryValidator)
 	issueRepository := repositories.NewIssueRepository(db, queries, logger)
-	issuePoller := workers.NewIssuePoller(configGithub, githubClient, issueRepository, logger)
+	issuePoller := workers.NewIssuePoller(configGithub, client, issueRepository, logger)
 	v2 := application.NewWorkers(issuePoller)
 	planner := application.NewPlanner(configGithub, v, v2, repositoryRepository)
 	scheduler := application.NewScheduler(planner, logger)
