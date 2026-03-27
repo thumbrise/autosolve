@@ -20,23 +20,21 @@ import (
 	"time"
 
 	"github.com/google/go-github/v84/github"
-
-	"github.com/thumbrise/autosolve/pkg/httperr"
 )
 
-// mapError classifies a GitHub API error into a transient or permanent sentinel.
+// mapError converts GitHub API errors into domain-visible error types
+// that implement apierr interfaces (Retryable, WaitHinted, ServicePressure).
 //
 // Classification order:
 //  1. GitHub-specific rate limit types (*github.RateLimitError, *github.AbuseRateLimitError)
-//     are mapped to httperr.ErrRateLimit directly, because GitHub returns 403 for rate limits
-//     which would otherwise be classified as permanent by generic HTTP classification.
-//  2. Other GitHub HTTP errors (*github.ErrorResponse) are classified by status code
-//     via httperr.ClassifyStatus (408 → timeout, 429 → rate limit, 5xx → server error).
-//  3. Transport-level errors (net.OpError, url.Error, DNS) are classified via httperr.Classify.
-//  4. Everything else is returned as-is (permanent).
+//     → RateLimitError (implements Retryable + WaitHinted + ServicePressure).
+//     GitHub returns 403 for rate limits, not 429.
+//  2. Other GitHub HTTP errors (*github.ErrorResponse) with 5xx status
+//     → ServerError (implements Retryable).
+//  3. Everything else is returned as-is.
+//     Transport errors (net.OpError, timeout) are handled by longrun built-in classifier.
 //
-// The original error is always preserved in the chain — callers can use errors.As
-// to access GitHub-specific fields (e.g. RateLimitError.Rate.Reset).
+// The original error is always preserved in the chain via Unwrap.
 func (p *Client) mapError(err error) error {
 	if err == nil {
 		return nil
@@ -47,7 +45,7 @@ func (p *Client) mapError(err error) error {
 	if rl, ok := errors.AsType[*github.RateLimitError](err); ok {
 		return &RateLimitError{
 			RetryAfter: time.Until(rl.Rate.Reset.Time),
-			Err:        fmt.Errorf("%w: %w", httperr.ErrRateLimit, err),
+			Err:        fmt.Errorf("rate limit: %w", err),
 		}
 	}
 
@@ -59,14 +57,22 @@ func (p *Client) mapError(err error) error {
 
 		return &RateLimitError{
 			RetryAfter: retryAfter,
-			Err:        fmt.Errorf("%w: %w", httperr.ErrRateLimit, err),
+			Err:        fmt.Errorf("abuse rate limit: %w", err),
 		}
 	}
 
-	// Generic HTTP classification.
+	// Server errors (5xx) — retryable.
 	if ghErr, ok := errors.AsType[*github.ErrorResponse](err); ok && ghErr.Response != nil {
-		return httperr.ClassifyStatus(ghErr.Response.StatusCode, err)
+		if ghErr.Response.StatusCode >= 500 {
+			return &ServerError{
+				StatusCode: ghErr.Response.StatusCode,
+				Err:        fmt.Errorf("server error %d: %w", ghErr.Response.StatusCode, err),
+			}
+		}
 	}
 
-	return httperr.Classify(err)
+	// Everything else returned as-is.
+	// Transport errors → longrun built-in classifier.
+	// Unknown errors → baseline degraded mode.
+	return err
 }
