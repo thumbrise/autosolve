@@ -42,9 +42,9 @@ are transient (`[]error`), Planner decides how to retry them (max retries, backo
 Names are formatted by Scheduler as `{phase}:{resource}:{owner}/{name}`:
 
 ```
-preflight:repository:thumbrise/autosolve
-worker:issues:thumbrise/autosolve
-worker:issues:thumbrise/otelext
+preflight:repository-validator:thumbrise/autosolve
+worker:issue-poller:thumbrise/autosolve
+worker:issue-poller:thumbrise/otelext
 ```
 
 ## Extension points: tenants

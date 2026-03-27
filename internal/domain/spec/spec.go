@@ -29,7 +29,7 @@ import (
 //
 // Task naming convention: preflight:{Resource}:{owner}/{name}
 // Examples:
-//   - preflight:repository:thumbrise/autosolve
+//   - preflight:repository-validator:thumbrise/autosolve
 type PreflightSpec struct {
 	Resource   string
 	Transients []error
@@ -44,8 +44,8 @@ type PreflightSpec struct {
 //
 // Task naming convention: worker:{Resource}:{owner}/{name}
 // Examples:
-//   - worker:issues:thumbrise/autosolve
-//   - worker:comments:thumbrise/otelext
+//   - worker:issue-poller:thumbrise/autosolve
+//   - worker:comment-poller:thumbrise/otelext
 type WorkerSpec struct {
 	Resource   string
 	Interval   time.Duration

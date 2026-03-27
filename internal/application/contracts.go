@@ -21,7 +21,7 @@ import "github.com/thumbrise/autosolve/internal/domain/spec"
 //
 // Task naming convention: preflight:{Resource}:{owner}/{name}
 // Examples:
-//   - preflight:repository:thumbrise/autosolve
+//   - preflight:repository-validator:thumbrise/autosolve
 type Preflight interface {
 	TaskSpec() spec.PreflightSpec
 }
@@ -31,8 +31,8 @@ type Preflight interface {
 //
 // Task naming convention: worker:{Resource}:{owner}/{name}
 // Examples:
-//   - worker:issues:thumbrise/autosolve
-//   - worker:comments:thumbrise/otelext
+//   - worker:issue-poller:thumbrise/autosolve
+//   - worker:comment-poller:thumbrise/otelext
 type Worker interface {
 	TaskSpec() spec.WorkerSpec
 }
