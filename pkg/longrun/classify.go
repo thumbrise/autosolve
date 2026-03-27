@@ -22,11 +22,14 @@ import (
 	"net/url"
 )
 
-// classifyTransport checks whether err is a transport-level failure.
+// ClassifyTransport checks whether err is a transport-level failure.
 // Returns CategoryNode for network and timeout errors, nil otherwise.
 //
 // This is a built-in classifier that depends only on stdlib.
-// It runs before any user-provided ClassifierFunc.
+// It runs before any user-provided ClassifierFunc in the handleFailure pipeline.
+//
+// Exported for testability and for use in custom ClassifierFunc implementations
+// that want to extend (not replace) the built-in transport classification.
 //
 // Classification rules:
 //   - url.Error with Timeout() → Node (check before net.OpError because url.Error often wraps it)
@@ -34,7 +37,7 @@ import (
 //   - net.OpError → Node
 //   - net.DNSError → Node
 //   - io.EOF, io.ErrUnexpectedEOF → Node (connection dropped mid-response)
-func classifyTransport(err error) *ErrorClass {
+func ClassifyTransport(err error) *ErrorClass {
 	// Timeout: url.Error wraps both client-side deadlines and dial timeouts.
 	// Check before net.OpError because url.Error often wraps net.OpError.
 	var urlErr *url.Error

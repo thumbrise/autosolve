@@ -256,7 +256,7 @@ func (t *Task) handleBaselineFailure(ctx context.Context, err error) error {
 // is unknown and Baseline.Degraded is nil.
 func (t *Task) classifyWithBaseline(err error) (*ErrorClass, *Policy) {
 	// [1] Built-in transport classify.
-	if class := classifyTransport(err); class != nil {
+	if class := ClassifyTransport(err); class != nil {
 		return class, &t.baseline.Node
 	}
 
