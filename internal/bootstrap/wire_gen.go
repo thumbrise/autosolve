@@ -32,6 +32,8 @@ func InitializeKernel(contextContext context.Context, reader *config.Reader, log
 	}
 	minIntervalThrottler := limit.NewMinIntervalThrottler(configGithub)
 	transport := github.NewTransport(minIntervalThrottler)
+	domainMapper := github.NewDomainMapper()
+	client := github.NewClient(logger, configGithub, transport, domainMapper)
 	configDatabase, err := config2.NewDatabase(contextContext, reader)
 	if err != nil {
 		return nil, err
@@ -42,8 +44,6 @@ func InitializeKernel(contextContext context.Context, reader *config.Reader, log
 	}
 	queries := sqlcgen.New()
 	repositoryRepository := repositories.NewRepositoryRepository(db, queries, logger)
-	domainMapper := github.NewDomainMapper(repositoryRepository)
-	client := github.NewClient(logger, configGithub, transport, domainMapper)
 	repositoryValidator := preflights.NewRepositoryValidator(client, repositoryRepository, logger)
 	v := application.NewPreflights(repositoryValidator)
 	issueRepository := repositories.NewIssueRepository(db, queries, logger)

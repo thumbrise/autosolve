@@ -109,7 +109,7 @@ func (p *IssuePoller) Run(ctx context.Context, tenant tenants.RepositoryTenant) 
 
 	p.logger.InfoContext(ctx, "fetched", slog.Int("count", len(issues)))
 
-	err = p.store(ctx, issues)
+	err = p.store(ctx, tenant.RepoID, issues)
 	if err != nil {
 		// SQLite 1 connection pool. Always permanent
 		return fmt.Errorf("%w: %w", ErrStoreIssues, err)
@@ -120,8 +120,8 @@ func (p *IssuePoller) Run(ctx context.Context, tenant tenants.RepositoryTenant) 
 	return nil
 }
 
-func (p *IssuePoller) store(ctx context.Context, issues []*entities.Issue) error {
-	return p.issueRepository.UpsertMany(ctx, issues)
+func (p *IssuePoller) store(ctx context.Context, repositoryID int64, issues []*entities.Issue) error {
+	return p.issueRepository.UpsertMany(ctx, repositoryID, issues)
 }
 
 func (p *IssuePoller) lastUpdate(ctx context.Context, repositoryID int64) (time.Time, error) {

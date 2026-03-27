@@ -34,7 +34,7 @@ func NewIssueRepository(db *sql.DB, queries *sqlcgen.Queries, logger *slog.Logge
 	return &IssueRepository{db: db, queries: queries, logger: logger}
 }
 
-func (r *IssueRepository) UpsertMany(ctx context.Context, issues []*entities.Issue) error {
+func (r *IssueRepository) UpsertMany(ctx context.Context, repositoryID int64, issues []*entities.Issue) error {
 	if len(issues) == 0 {
 		return nil
 	}
@@ -51,7 +51,7 @@ func (r *IssueRepository) UpsertMany(ctx context.Context, issues []*entities.Iss
 
 	for _, iss := range issues {
 		err := r.queries.UpsertIssue(ctx, tx, sqlcgen.UpsertIssueParams{
-			RepositoryID:    iss.RepositoryID,
+			RepositoryID:    repositoryID,
 			GithubID:        iss.GithubID,
 			Number:          iss.Number,
 			Title:           iss.Title,
