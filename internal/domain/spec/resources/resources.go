@@ -12,15 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package entities
+package resources
 
-import "time"
+type Resource string
 
-type SyncCursor struct {
-	Record
-	RepositoryID   int64
-	ResourceType   string
-	SinceUpdatedAt time.Time
-	NextPage       int
-	ETag           string
-}
+const (
+	Issue = Resource("issue")
+)

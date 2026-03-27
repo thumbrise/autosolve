@@ -52,4 +52,5 @@ var Bindings = wire.NewSet(
 
 	repositories.NewIssueRepository,
 	repositories.NewRepositoryRepository,
+	repositories.NewSyncCursorRepository,
 )
