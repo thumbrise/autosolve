@@ -22,9 +22,35 @@ import (
 	"log/slog"
 	"time"
 
+	"go.opentelemetry.io/otel"
+
 	"github.com/thumbrise/autosolve/internal/domain/spec"
 	"github.com/thumbrise/autosolve/internal/domain/spec/tenants"
 	"github.com/thumbrise/autosolve/internal/infrastructure/dal/sqlcgen"
+)
+
+const relayOtelLibrary = "github.com/thumbrise/autosolve/internal/domain/spec/workers/outbox_relay"
+
+var relayMeter = otel.Meter(relayOtelLibrary)
+
+var (
+	// metricRelayEventsRelayed counts events successfully relayed to the queue.
+	metricRelayEventsRelayed, _ = relayMeter.Int64Counter("relay.events.relayed")
+
+	// metricRelayEventsFailed counts events that failed to relay.
+	metricRelayEventsFailed, _ = relayMeter.Int64Counter("relay.events.failed")
+
+	// metricRelayBatchSize records how many events were in each batch tick.
+	metricRelayBatchSize, _ = relayMeter.Int64Histogram("relay.batch.size")
+
+	// metricRelayBatchDuration records time per batch tick in seconds.
+	metricRelayBatchDuration, _ = relayMeter.Float64Histogram("relay.batch.duration_seconds")
+
+	// metricRelayEventAge records lag between outbox event creation and relay in seconds.
+	metricRelayEventAge, _ = relayMeter.Float64Histogram("relay.event.age_seconds")
+
+	// metricRelayBatchFull counts how often a batch hits the limit (backpressure signal).
+	metricRelayBatchFull, _ = relayMeter.Int64Counter("relay.batch.full")
 )
 
 var (
@@ -91,11 +117,19 @@ func (r *OutboxRelay) Run(ctx context.Context, tenant tenants.RepositoryTenant) 
 		return nil
 	}
 
+	batchFull := len(events) == outboxBatchLimit
+
 	r.logger.InfoContext(ctx, "relaying outbox events to jobs",
 		slog.Int("count", len(events)),
 		slog.Int("batchLimit", outboxBatchLimit),
-		slog.Bool("batchFull", len(events) == outboxBatchLimit),
+		slog.Bool("batchFull", batchFull),
 	)
+
+	metricRelayBatchSize.Record(ctx, int64(len(events)))
+
+	if batchFull {
+		metricRelayBatchFull.Add(ctx, 1)
+	}
 
 	var relayed, failed int
 
@@ -106,6 +140,8 @@ func (r *OutboxRelay) Run(ctx context.Context, tenant tenants.RepositoryTenant) 
 
 		if err := r.relayEvent(ctx, ev); err != nil {
 			failed++
+
+			metricRelayEventsFailed.Add(ctx, 1)
 
 			r.logger.ErrorContext(ctx, "failed to relay event",
 				slog.Int64("eventId", ev.ID),
@@ -118,6 +154,9 @@ func (r *OutboxRelay) Run(ctx context.Context, tenant tenants.RepositoryTenant) 
 
 		relayed++
 	}
+
+	metricRelayEventsRelayed.Add(ctx, int64(relayed))
+	metricRelayBatchDuration.Record(ctx, time.Since(start).Seconds())
 
 	r.logger.InfoContext(ctx, "relay batch complete",
 		slog.Int("relayed", relayed),
@@ -165,11 +204,14 @@ func (r *OutboxRelay) relayEvent(ctx context.Context, ev sqlcgen.PendingOutboxEv
 		return fmt.Errorf("ack event %d: %w", ev.ID, err)
 	}
 
+	eventAge := time.Since(ev.CreatedAt)
+	metricRelayEventAge.Record(ctx, eventAge.Seconds())
+
 	r.logger.DebugContext(ctx, "relay: event processed",
 		slog.Int64("eventId", ev.ID),
 		slog.String("type", jobType),
 		slog.Int64("issueId", issue.ID),
-		slog.Duration("eventAge", time.Since(ev.CreatedAt)),
+		slog.Duration("eventAge", eventAge),
 	)
 
 	return nil
