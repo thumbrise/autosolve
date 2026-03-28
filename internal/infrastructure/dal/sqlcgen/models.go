@@ -35,6 +35,17 @@ type Comment struct {
 	GithubUpdatedAt time.Time
 }
 
+type Goqite struct {
+	ID       string
+	Created  string
+	Updated  string
+	Queue    string
+	Body     []byte
+	Timeout  string
+	Received int64
+	Priority int64
+}
+
 type Issue struct {
 	ID              int64
 	CreatedAt       time.Time
@@ -63,21 +74,6 @@ type IssueAssignee struct {
 type IssueLabel struct {
 	IssueID int64
 	LabelID int64
-}
-
-type Job struct {
-	ID           int64
-	CreatedAt    time.Time
-	UpdatedAt    time.Time
-	RepositoryID int64
-	IssueID      int64
-	Type         string
-	Status       string
-	Prompt       string
-	Model        *string
-	Result       *string
-	Attempts     int64
-	LastError    *string
 }
 
 type Label struct {

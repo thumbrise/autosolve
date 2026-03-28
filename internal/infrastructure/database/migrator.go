@@ -27,6 +27,8 @@ import (
 	"time"
 
 	"github.com/pressly/goose/v3"
+
+	"github.com/thumbrise/autosolve/internal/config"
 )
 
 //go:embed migrations/*.sql
@@ -51,9 +53,11 @@ var ErrMigrationFailed = errors.New("migration failed")
 // partial results when needed.
 type Migrator struct {
 	provider *goose.Provider
+	db       *sql.DB
+	dbPath   string
 }
 
-func NewMigrator(db *sql.DB) (*Migrator, error) {
+func NewMigrator(db *sql.DB, cfg *config.Database) (*Migrator, error) {
 	migrations, err := fs.Sub(embeddedMigrations, "migrations")
 	if err != nil {
 		return nil, fmt.Errorf("%w: sub fs: %w", ErrMigrationFailed, err)
@@ -64,7 +68,7 @@ func NewMigrator(db *sql.DB) (*Migrator, error) {
 		return nil, fmt.Errorf("%w: create provider: %w", ErrMigrationFailed, err)
 	}
 
-	return &Migrator{provider: provider}, nil
+	return &Migrator{provider: provider, db: db, dbPath: cfg.SQLitePath}, nil
 }
 
 // Up applies pending migrations. If steps <= 0, applies all pending migrations.
@@ -152,21 +156,49 @@ func (m *Migrator) Redo(ctx context.Context) ([]*goose.MigrationResult, []*goose
 	return downResults, upResults, nil
 }
 
-// Fresh drops all tables and re-applies all migrations from scratch.
+// Fresh deletes the SQLite database file and re-applies all migrations from scratch.
 // Development-only operation — equivalent to Laravel's migrate:fresh.
 //
-// Returns both down and up results so the caller can observe the full operation.
-// On DownAll failure only downResults are populated. On Up failure both slices
-// contain whatever was completed before the error.
+// This avoids FK constraint issues during rollback by removing the file entirely.
+// The database connection is closed, the file is deleted, a new connection is opened
+// via NewDB, and the goose provider is recreated before running Up.
+//
+// After Fresh returns, the old *sql.DB (held by other components via Wire) is closed.
+// This is safe because Fresh is a CLI-only operation — the process exits after it.
 func (m *Migrator) Fresh(ctx context.Context) ([]*goose.MigrationResult, []*goose.MigrationResult, error) {
-	downResults, err := m.DownAll(ctx)
-	if err != nil {
-		return downResults, nil, err
+	// Close the current connection so SQLite releases the file.
+	if err := m.db.Close(); err != nil {
+		return nil, nil, fmt.Errorf("%w: close db: %w", ErrMigrationFailed, err)
 	}
+
+	// Remove the database file (and WAL/SHM sidecars if present).
+	for _, suffix := range []string{"", "-wal", "-shm"} {
+		_ = os.Remove(m.dbPath + suffix)
+	}
+
+	// Reopen via NewDB to avoid duplicating connection setup logic.
+	db, err := NewDB(ctx, &config.Database{SQLitePath: m.dbPath})
+	if err != nil {
+		return nil, nil, fmt.Errorf("%w: reopen db: %w", ErrMigrationFailed, err)
+	}
+
+	m.db = db
+
+	migrations, err := fs.Sub(embeddedMigrations, "migrations")
+	if err != nil {
+		return nil, nil, fmt.Errorf("%w: sub fs: %w", ErrMigrationFailed, err)
+	}
+
+	provider, err := goose.NewProvider(goose.DialectSQLite3, db, migrations)
+	if err != nil {
+		return nil, nil, fmt.Errorf("%w: recreate provider: %w", ErrMigrationFailed, err)
+	}
+
+	m.provider = provider
 
 	upResults, err := m.Up(ctx, 0)
 
-	return downResults, upResults, err
+	return nil, upResults, err
 }
 
 var sqlMigrationTemplate = template.Must(template.New("goose.sql-migration").Parse(
