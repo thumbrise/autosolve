@@ -30,6 +30,7 @@ var Bindings = wire.NewSet(
 	preflights.NewRepositoryValidator,
 	workers.NewIssuePoller,
 	workers.NewOutboxRelay,
+	workers.NewIssueExplainer,
 )
 
 // NewPreflights registers all preflight tasks.
