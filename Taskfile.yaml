@@ -33,18 +33,30 @@ tasks:
       - task: lint:sql
 
   lint:sql:
-    desc: Lint and fix SQL migrations
+    desc: Lint and fix SQL files
     cmds:
-      - if which sqlfluff > /dev/null 2>&1; then sqlfluff fix internal/infrastructure/database/migrations/ --config .sqlfluff --dialect sqlite; else echo "sqlfluff not found, skipping SQL lint (pipx install sqlfluff)"; fi
-      - |
-        MATCHES=$(grep -rn 'interface{}' internal/infrastructure/dal/sqlcgen/ --exclude=db.go || true)
-        if [ -n "$MATCHES" ]; then
-          echo "ERROR: sqlc generated interface{} fields — check column types in migrations:"
-          echo "$MATCHES"
-          exit 1
-        else
-          echo "sqlcgen types OK"
-        fi
+      # temporary
+      - task: lint:sql:ci
+      # (TODO: sql fmt (#138))
+
+  lint:sql:ci:
+    desc: Lint SQL files without fix (CI)
+    cmds:
+      - if which sqlfluff > /dev/null 2>&1; then sqlfluff lint; else echo "sqlfluff not found, skipping SQL lint (pipx install sqlfluff)"; fi
+      - task: lint:sql:types
+
+  lint:sql:types:
+    desc: Check sqlcgen for interface{} fields
+    internal: true
+    cmd: |
+      MATCHES=$(grep -rn 'interface{}' internal/infrastructure/dal/sqlcgen/ --exclude=db.go || true)  
+      if [ -n "$MATCHES" ]; then  
+        echo "ERROR: sqlc generated interface{} fields — check column types in migrations:"  
+        echo "$MATCHES"  
+        exit 1  
+      else  
+        echo "sqlcgen types OK"  
+      fi
 
   lint:ci:
     desc: Run lint checks without auto-fix (CI workflow)
@@ -54,20 +66,6 @@ tasks:
       - go tool license-eye header check
       - go tool govulncheck ./...
       - task: lint:sql:ci
-
-  lint:sql:ci:
-    desc: Lint SQL migrations without fix (CI workflow)
-    cmds:
-      - if which sqlfluff > /dev/null 2>&1; then sqlfluff lint internal/infrastructure/database/migrations/ --config .sqlfluff --dialect sqlite; else echo "sqlfluff not found, skipping SQL lint (pipx install sqlfluff)"; fi
-      - |
-        MATCHES=$(grep -rn 'interface{}' internal/infrastructure/dal/sqlcgen/ --exclude=db.go || true)
-        if [ -n "$MATCHES" ]; then
-          echo "ERROR: sqlc generated interface{} fields — check column types in migrations:"
-          echo "$MATCHES"
-          exit 1
-        else
-          echo "sqlcgen types OK"
-        fi
 
   test:
     desc: Run tests
