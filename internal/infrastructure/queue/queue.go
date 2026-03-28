@@ -84,6 +84,26 @@ func (q *Queue) Send(ctx context.Context, jobType string, repositoryID, issueID 
 	return nil
 }
 
+// Receive dequeues the next message from the queue.
+// Returns nil message and nil error when the queue is empty.
+func (q *Queue) Receive(ctx context.Context) (*goqite.Message, error) {
+	msg, err := q.q.Receive(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("receive: %w", err)
+	}
+
+	return msg, nil
+}
+
+// Delete acknowledges a message, removing it from the queue.
+func (q *Queue) Delete(ctx context.Context, id goqite.ID) error {
+	if err := q.q.Delete(ctx, id); err != nil {
+		return fmt.Errorf("delete: %w", err)
+	}
+
+	return nil
+}
+
 // Inner returns the underlying goqite.Queue for use by the job processor (#156).
 func (q *Queue) Inner() *goqite.Queue {
 	return q.q

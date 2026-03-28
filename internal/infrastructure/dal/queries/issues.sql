@@ -31,6 +31,11 @@ SELECT id, number, title, body, state
 FROM issues
 WHERE repository_id = ? AND number = ?;
 
+-- name: GetIssueByID :one
+SELECT id, number, title, body, state
+FROM issues
+WHERE id = ?;
+
 -- name: ListIssues :many
 SELECT id, repository_id, number, title, state
 FROM issues

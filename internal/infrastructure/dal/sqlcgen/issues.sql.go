@@ -24,6 +24,33 @@ import (
 	"time"
 )
 
+const getIssueByID = `-- name: GetIssueByID :one
+SELECT id, number, title, body, state
+FROM issues
+WHERE id = ?
+`
+
+type GetIssueByIDRow struct {
+	ID     int64
+	Number int64
+	Title  string
+	Body   string
+	State  string
+}
+
+func (q *Queries) GetIssueByID(ctx context.Context, db DBTX, id int64) (GetIssueByIDRow, error) {
+	row := db.QueryRowContext(ctx, getIssueByID, id)
+	var i GetIssueByIDRow
+	err := row.Scan(
+		&i.ID,
+		&i.Number,
+		&i.Title,
+		&i.Body,
+		&i.State,
+	)
+	return i, err
+}
+
 const getIssueByRepoAndNumber = `-- name: GetIssueByRepoAndNumber :one
 SELECT id, number, title, body, state
 FROM issues
