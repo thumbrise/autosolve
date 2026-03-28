@@ -131,11 +131,30 @@ func (r *OutboxRelay) Run(ctx context.Context, tenant tenants.RepositoryTenant) 
 		metricRelayBatchFull.Add(ctx, 1)
 	}
 
-	var relayed, failed int
+	relayed, failed := r.relayBatch(ctx, events)
+
+	metricRelayEventsRelayed.Add(ctx, int64(relayed))
+	metricRelayBatchDuration.Record(ctx, time.Since(start).Seconds())
+
+	r.logger.InfoContext(ctx, "relay batch complete",
+		slog.Int("relayed", relayed),
+		slog.Int("failed", failed),
+		slog.Int("total", len(events)),
+		slog.Duration("elapsed", time.Since(start)),
+	)
+
+	return nil
+}
+
+// relayBatch encapsulate batch loop.
+//
+// returns relayed, failed.
+func (r *OutboxRelay) relayBatch(ctx context.Context, events []sqlcgen.PendingOutboxEventsRow) (int, int) {
+	relayed, failed := 0, 0
 
 	for _, ev := range events {
 		if ctx.Err() != nil {
-			return ctx.Err() //nolint:wrapcheck // context cancellation, not a domain error
+			return 0, 0
 		}
 
 		if err := r.relayEvent(ctx, ev); err != nil {
@@ -155,17 +174,7 @@ func (r *OutboxRelay) Run(ctx context.Context, tenant tenants.RepositoryTenant) 
 		relayed++
 	}
 
-	metricRelayEventsRelayed.Add(ctx, int64(relayed))
-	metricRelayBatchDuration.Record(ctx, time.Since(start).Seconds())
-
-	r.logger.InfoContext(ctx, "relay batch complete",
-		slog.Int("relayed", relayed),
-		slog.Int("failed", failed),
-		slog.Int("total", len(events)),
-		slog.Duration("elapsed", time.Since(start)),
-	)
-
-	return nil
+	return relayed, failed
 }
 
 func (r *OutboxRelay) relayEvent(ctx context.Context, ev sqlcgen.PendingOutboxEventsRow) error {
