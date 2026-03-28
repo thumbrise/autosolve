@@ -64,6 +64,7 @@ export default defineConfig({
             {text: '#3 — Building longrun', link: '/devlog/003-building-longrun'},
             {text: '#4 — From God Table to sqlc', link: '/devlog/004-god-table-to-sqlc'},
             {text: '#5 — Two-Phase Scheduler', link: '/devlog/005-two-phase-scheduler'},
+            {text: '#6 — Over-Engineered Event Bus', link: '/devlog/006-over-engineered-event-bus'},
           ],
         },
       ],
