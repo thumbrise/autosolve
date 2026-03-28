@@ -32,9 +32,14 @@ If any repo is unreachable → permanent error → app exits. Fix your config an
 
 ## Workers
 
-Long-running interval tasks. Currently: `IssuePoller`.
+Long-running interval tasks. Two kinds:
 
-For each configured repo, it polls GitHub for updated issues on a timer. State is tracked per-repo via sync cursors (ETag, page, since timestamp).
+**Per-repo workers** — multiplied by Planner for each configured repository:
+- `IssuePoller` — polls GitHub for updated issues on a timer
+- `OutboxRelay` — relays outbox events to the goqite job queue
+
+**Global workers** — run once, not scoped to a repository:
+- `IssueExplainer` — consumes the shared goqite queue, calls Ollama, logs AI classification
 
 Workers have **Degraded mode enabled** — unknown errors don't crash the worker, they retry with exponential backoff and loud ERROR logging. Like `docker restart: always`.
 
@@ -44,7 +49,8 @@ Workers have **Degraded mode enabled** — unknown errors don't crash the worker
 
 ```
 RepositoryValidator.TaskSpec() → PreflightSpec{Resource: "repository-validator", Work: ...}
-IssuePoller.TaskSpec()         → WorkerSpec{Resource: "issue-poller", Interval: 5s, Work: ...}
+IssuePoller.TaskSpec()         → WorkerSpec{Resource: "issue-poller", Interval: 10s, Work: ...}
+IssueExplainer.TaskSpec()      → GlobalWorkerSpec{Resource: "issue-explainer", Interval: 2s, Work: ...}
 
 Planner.Preflights() → [
   PreflightUnit{Repo: "thumbrise/autosolve", Work: closure(RepoTenant)},
@@ -52,12 +58,16 @@ Planner.Preflights() → [
 ]
 
 Planner.Workers() → [
-  WorkerUnit{Repo: "thumbrise/autosolve", Interval: 5s, Work: closure(RepoTenant)},
-  WorkerUnit{Repo: "thumbrise/otelext",   Interval: 5s, Work: closure(RepoTenant)},
+  WorkerUnit{Repo: "thumbrise/autosolve", Interval: 10s, Work: closure(RepoTenant)},
+  WorkerUnit{Repo: "thumbrise/otelext",   Interval: 10s, Work: closure(RepoTenant)},
+]
+
+GlobalWorkers → [
+  IntervalTask{Name: "worker:issue-explainer", Interval: 2s, Work: ...},
 ]
 ```
 
-Scheduler formats task names: `preflight:repository-validator:thumbrise/autosolve`, `worker:issue-poller:thumbrise/otelext`.
+Scheduler formats task names: `worker:issue-poller:thumbrise/otelext` (per-repo), `worker:issue-explainer` (global).
 
 ## Retry Policies
 

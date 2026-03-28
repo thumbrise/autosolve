@@ -93,6 +93,22 @@ Your worker will now run for every configured repository. The Planner multiplies
 - **No OTEL code** — every invocation is automatically traced
 - **No task naming** — Scheduler formats it from your Resource + repo
 
+## Adding a Global Worker Instead?
+
+Global workers are not multiplied per repository. They run once, consuming shared resources (e.g. a job queue).
+
+Same pattern, but:
+- Implement `GlobalWorker` interface and return `GlobalWorkerSpec`
+- `Work` takes only `context.Context` — no tenant parameter
+- Register in `NewGlobalWorkers()` instead of `NewWorkers()`
+- Scheduler adds them directly, bypassing Planner
+
+Example: `IssueExplainer` — consumes the shared goqite queue, calls Ollama.
+
+::: info
+Full refactor to unified `TaskSpec[T]` is planned in [#161](https://github.com/thumbrise/autosolve/issues/161).
+:::
+
 ## Adding a Preflight Instead?
 
 Same pattern, but implement `Preflight` interface and return `PreflightSpec`. Register in `NewPreflights()`. Preflights run once before workers start, and unknown errors are fatal (no Degraded mode).

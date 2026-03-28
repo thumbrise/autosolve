@@ -8,10 +8,14 @@ autosolve is being built right now. APIs may change, features may shift. This is
 
 - **Multi-repo GitHub issue polling** with per-repo state persistence in SQLite
 - **Two-phase scheduler** — preflights validate repos, then workers start polling
+- **Outbox relay** — outbox events relayed to goqite job queue
+- **AI dispatch** — IssueExplainer consumes queue, calls Ollama, logs classification
+- **Global workers** — interval tasks not scoped to a repository (e.g. queue consumers)
 - **Per-error retry with exponential backoff** via the `longrun` package
 - **Degraded mode** — unknown errors don't crash workers, they retry with loud logging
 - **Rate limiting** via HTTP transport layer (transparent to domain code)
 - **Full OpenTelemetry observability** — traces, metrics, logs via OTLP/gRPC
+- **OTEL metrics** on OutboxRelay and IssueExplainer — throughput, latency, backpressure
 - **goose migrations + sqlc-generated DAL** — type-safe database layer
 - **Google Wire DI** — clean dependency graph, no magic
 
@@ -25,8 +29,8 @@ These are the broad directions, not promises. Priorities shift based on real usa
 
 | Area | What | Status |
 |------|------|--------|
-| **AI Dispatch** | Rule engine + executor that launches external AI tools | Design phase |
-| **Result Publishing** | Post AI results back to GitHub (comments, PRs) | Not started |
+| **AI Dispatch** | Queue consumer calls Ollama, classifies issues | Done (#156) |
+| **Result Publishing** | Post AI results back to GitHub (comments, PRs) | Next (#157) |
 | **Adaptive Polling** | Back off when repos are quiet, speed up when active | [#53](https://github.com/thumbrise/autosolve/issues/53) |
 | **longrun extraction** | Extract `pkg/longrun` into a standalone Go module | After API stabilizes |
 | **Module system** | Self-contained modules per tenant type | When second tenant appears |
