@@ -67,6 +67,13 @@ type GetLastUpdateTimeRow struct {
 	GithubUpdatedAt time.Time
 }
 
+func (q *Queries) GetLastUpdateTime(ctx context.Context, db DBTX, repositoryID int64) (GetLastUpdateTimeRow, error) {
+	row := db.QueryRowContext(ctx, getLastUpdateTime, repositoryID)
+	var i GetLastUpdateTimeRow
+	err := row.Scan(&i.GithubID, &i.GithubUpdatedAt)
+	return i, err
+}
+
 const listIssues = `-- name: ListIssues :many
 SELECT id, repository_id, number, title, state
 FROM issues
@@ -90,7 +97,13 @@ func (q *Queries) ListIssues(ctx context.Context, db DBTX) ([]ListIssuesRow, err
 	items := []ListIssuesRow{}
 	for rows.Next() {
 		var i ListIssuesRow
-		if err := rows.Scan(&i.ID, &i.RepositoryID, &i.Number, &i.Title, &i.State); err != nil {
+		if err := rows.Scan(
+			&i.ID,
+			&i.RepositoryID,
+			&i.Number,
+			&i.Title,
+			&i.State,
+		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -102,13 +115,6 @@ func (q *Queries) ListIssues(ctx context.Context, db DBTX) ([]ListIssuesRow, err
 		return nil, err
 	}
 	return items, nil
-}
-
-func (q *Queries) GetLastUpdateTime(ctx context.Context, db DBTX, repositoryID int64) (GetLastUpdateTimeRow, error) {
-	row := db.QueryRowContext(ctx, getLastUpdateTime, repositoryID)
-	var i GetLastUpdateTimeRow
-	err := row.Scan(&i.GithubID, &i.GithubUpdatedAt)
-	return i, err
 }
 
 const upsertIssue = `-- name: UpsertIssue :exec

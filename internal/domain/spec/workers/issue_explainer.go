@@ -51,10 +51,11 @@ func (ie *IssueExplainer) TaskSpec() spec.WorkerSpec {
 	}
 }
 
-func (ie *IssueExplainer) Run(ctx context.Context, _ tenants.RepositoryTenant) error {
+func (ie *IssueExplainer) Run(ctx context.Context, tenant tenants.RepositoryTenant) error {
 	events, err := ie.queries.PendingOutboxEvents(ctx, ie.db, sqlcgen.PendingOutboxEventsParams{
-		Topic: outboxTopicIssuesSynced,
-		Limit: outboxBatchLimit,
+		Topic:        outboxTopicIssuesSynced,
+		RepositoryID: tenant.RepositoryID,
+		Limit:        outboxBatchLimit,
 	})
 	if err != nil {
 		return fmt.Errorf("read outbox: %w", err)

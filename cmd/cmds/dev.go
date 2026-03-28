@@ -136,7 +136,7 @@ type issueEvent struct {
 func (s *devServer) handleEvents(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
-	events, err := s.queries.PendingOutboxEvents(ctx, s.db, sqlcgen.PendingOutboxEventsParams{
+	events, err := s.queries.PendingOutboxEventsAll(ctx, s.db, sqlcgen.PendingOutboxEventsAllParams{
 		Topic: "issues:synced",
 		Limit: 100,
 	})
@@ -172,7 +172,7 @@ func (s *devServer) handleEvents(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		s.processOutboxEvent(ctx, w, flusher, ev, prompt)
+		s.processOutboxEvent(ctx, w, flusher, sqlcgen.PendingOutboxEventsRow(ev), prompt)
 	}
 
 	_, _ = fmt.Fprintf(w, "data: {\"type\":\"complete\"}\n\n")
