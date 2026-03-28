@@ -20,6 +20,7 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/thumbrise/autosolve/internal/domain/spec/workers"
 	"github.com/thumbrise/autosolve/pkg/longrun"
 )
 
@@ -30,12 +31,13 @@ import (
 // Scheduler is generic — it doesn't know about repositories, GitHub, or issues.
 // It only knows phases and task units provided by Planner.
 type Scheduler struct {
-	planner *Planner
-	logger  *slog.Logger
+	planner        *Planner
+	issueExplainer *workers.IssueExplainer
+	logger         *slog.Logger
 }
 
-func NewScheduler(planner *Planner, logger *slog.Logger) *Scheduler {
-	return &Scheduler{planner: planner, logger: logger}
+func NewScheduler(planner *Planner, issueExplainer *workers.IssueExplainer, logger *slog.Logger) *Scheduler {
+	return &Scheduler{planner: planner, issueExplainer: issueExplainer, logger: logger}
 }
 
 func (s *Scheduler) Run(ctx context.Context) error {
@@ -89,6 +91,15 @@ func (s *Scheduler) runWorkers(ctx context.Context) error {
 		name := fmt.Sprintf("worker:%s:%s/%s", u.Resource, u.Repo.Owner, u.Repo.Name)
 		runner.Add(longrun.NewIntervalTask(name, u.Interval, u.Work, nil))
 	}
+
+	// Global workers — not multiplied per repository.
+	// IssueExplainer consumes the shared goqite queue directly.
+	runner.Add(longrun.NewIntervalTask(
+		"worker:issue-explainer",
+		s.issueExplainer.Interval(),
+		s.issueExplainer.Run,
+		nil,
+	))
 
 	return runner.Wait(ctx)
 }
