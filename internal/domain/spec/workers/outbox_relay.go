@@ -143,6 +143,10 @@ func (r *OutboxRelay) Run(ctx context.Context, tenant tenants.RepositoryTenant) 
 		slog.Duration("elapsed", time.Since(start)),
 	)
 
+	if ctx.Err() != nil {
+		return ctx.Err() //nolint:wrapcheck // context cancellation, not a domain error
+	}
+
 	return nil
 }
 
