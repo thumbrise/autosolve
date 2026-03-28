@@ -34,6 +34,9 @@ var Bindings = wire.NewSet(
 	cmds.NewMigrateRedo,
 	cmds.NewTest,
 	cmds.NewTestSubTree,
+	cmds.NewOutbox,
+	cmds.NewOutboxReplay,
+	cmds.NewDev,
 )
 
 // NewCommands is the central CLI command registry.
@@ -77,6 +80,9 @@ func NewCommands(
 	migrateRedo *cmds.MigrateRedo,
 	testCMD *cmds.Test,
 	testSubTree *cmds.TestSubTree,
+	outboxCMD *cmds.Outbox,
+	outboxReplay *cmds.OutboxReplay,
+	devCMD *cmds.Dev,
 ) []*cobra.Command {
 	migrateCMD.AddCommand(
 		migrateUp.Command,
@@ -89,9 +95,13 @@ func NewCommands(
 
 	testCMD.AddCommand(testSubTree.Command)
 
+	outboxCMD.AddCommand(outboxReplay.Command)
+
 	return []*cobra.Command{
 		scheduleCMD.Command,
 		migrateCMD.Command,
 		testCMD.Command,
+		outboxCMD.Command,
+		devCMD.Command,
 	}
 }

@@ -19,6 +19,10 @@ github:
   issues:
     parseInterval: 5s
 
+ollama:
+  endpoint: "http://localhost:11434"
+  model: "qwen2.5-coder:7b"
+
 # OpenTelemetry Configuration
 # See: https://opentelemetry.io/docs/specs/otel/configuration/sdk-environment-variables/
 #

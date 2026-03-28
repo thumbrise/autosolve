@@ -1,0 +1,288 @@
+<!-- Throwaway PoC UI — NOT production code. Will be replaced. See #152 -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>autosolve — dev playground</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: 'SF Mono', 'Fira Code', monospace; background: #0d1117; color: #c9d1d9; padding: 24px; }
+  h1 { font-size: 18px; color: #58a6ff; margin-bottom: 16px; }
+  .controls { display: flex; gap: 12px; margin-bottom: 20px; align-items: flex-end; }
+  .prompt-wrap { flex: 1; }
+  .prompt-wrap label { display: block; font-size: 12px; color: #8b949e; margin-bottom: 4px; }
+  textarea { width: 100%; height: 80px; background: #161b22; border: 1px solid #30363d; border-radius: 6px; color: #c9d1d9; padding: 10px; font-family: inherit; font-size: 13px; resize: vertical; }
+  textarea:focus { outline: none; border-color: #58a6ff; }
+  button { padding: 10px 20px; border: none; border-radius: 6px; font-family: inherit; font-size: 13px; font-weight: 600; cursor: pointer; white-space: nowrap; }
+  .btn-replay { background: #238636; color: #fff; height: 40px; }
+  .btn-replay:hover { background: #2ea043; }
+  .btn-replay:disabled { background: #21262d; color: #484f58; cursor: not-allowed; }
+  .status { font-size: 13px; color: #8b949e; margin-bottom: 16px; height: 20px; }
+  .status .count { color: #58a6ff; }
+  .cards { display: flex; flex-direction: column; gap: 12px; }
+  .card { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 16px; }
+  .card.processing { border-color: #d29922; }
+  .card.done { border-color: #238636; }
+  .card.error { border-color: #f85149; }
+  .card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+  .card-title { font-size: 14px; font-weight: 600; color: #e6edf3; }
+  .card-badge { font-size: 11px; padding: 2px 8px; border-radius: 12px; font-weight: 600; }
+  .badge-processing { background: #d29922; color: #000; }
+  .badge-done { background: #238636; color: #fff; }
+  .badge-error { background: #f85149; color: #fff; }
+  .card-body { font-size: 12px; color: #8b949e; margin-bottom: 8px; white-space: pre-wrap; word-break: break-word; line-height: 1.4; }
+  .card-response { font-size: 13px; color: #c9d1d9; background: #0d1117; border-radius: 4px; padding: 12px; white-space: pre-wrap; word-break: break-word; line-height: 1.5; }
+  .card-error { font-size: 13px; color: #f85149; }
+  .spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid #d29922; border-top-color: transparent; border-radius: 50%; animation: spin 0.8s linear infinite; vertical-align: middle; margin-right: 6px; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .mode-tabs { display: flex; gap: 0; margin-bottom: 16px; }
+  .mode-tab { padding: 8px 16px; background: #161b22; border: 1px solid #30363d; color: #8b949e; cursor: pointer; font-family: inherit; font-size: 12px; font-weight: 600; }
+  .mode-tab:first-child { border-radius: 6px 0 0 6px; }
+  .mode-tab:last-child { border-radius: 0 6px 6px 0; }
+  .mode-tab.active { background: #238636; color: #fff; border-color: #238636; }
+  .oneshot-panel { margin-bottom: 16px; display: none; }
+  .oneshot-panel.visible { display: block; }
+  .issue-select { width: 100%; background: #161b22; border: 1px solid #30363d; border-radius: 6px; color: #c9d1d9; padding: 8px 10px; font-family: inherit; font-size: 13px; }
+  .issue-select:focus { outline: none; border-color: #58a6ff; }
+  .btn-oneshot { background: #8957e5; color: #fff; height: 40px; margin-top: 8px; }
+  .btn-oneshot:hover { background: #a371f7; }
+  .btn-oneshot:disabled { background: #21262d; color: #484f58; cursor: not-allowed; }
+</style>
+</head>
+<body>
+
+<h1>🧪 autosolve — AI prompt playground</h1>
+
+<div class="controls">
+  <div class="prompt-wrap">
+    <label for="prompt">Prompt template (issue title &amp; body appended automatically)</label>
+    <textarea id="prompt">Classify this GitHub issue. Suggest priority (critical/high/medium/low) and component.</textarea>
+  </div>
+  <div style="display:flex; flex-direction:column; gap:8px;">
+    <button class="btn-replay" id="btnRun" onclick="run()">▶ Run</button>
+    <button class="btn-replay" id="btnReplay" onclick="replay()">↻ Replay &amp; Run</button>
+    <button class="btn-replay" id="btnStop" onclick="stopAndUnlock()" style="background:#f85149;display:none;">⏹ Stop</button>
+  </div>
+</div>
+
+<div class="mode-tabs">
+  <button class="mode-tab active" id="tabBatch" onclick="setMode('batch')">📋 Batch (outbox)</button>
+  <button class="mode-tab" id="tabOneshot" onclick="setMode('oneshot')">🎯 One-shot</button>
+</div>
+
+<div class="oneshot-panel" id="oneshotPanel">
+  <select class="issue-select" id="issueSelect">
+    <option value="">Loading issues...</option>
+  </select>
+  <button class="btn-replay btn-oneshot" id="btnOneshot" onclick="runOneShot()">🔮 Analyze</button>
+</div>
+
+<div class="status" id="status"></div>
+<div class="cards" id="cards"></div>
+
+<script>
+let eventSource = null;
+
+const promptEl = document.getElementById('prompt');
+if (localStorage.getItem('prompt')) promptEl.value = localStorage.getItem('prompt');
+promptEl.addEventListener('input', () => localStorage.setItem('prompt', promptEl.value));
+
+function run() {
+  stop();
+  document.getElementById('cards').innerHTML = '';
+  document.getElementById('status').innerHTML = '<span class="spinner"></span> Connecting...';
+
+  const prompt = encodeURIComponent(document.getElementById('prompt').value);
+  eventSource = new EventSource('/api/events?prompt=' + prompt);
+
+  document.getElementById('btnRun').disabled = true;
+  document.getElementById('btnReplay').disabled = true;
+  document.getElementById('btnStop').style.display = 'block';
+
+  let done = 0, total = 0;
+
+  eventSource.onmessage = function(e) {
+    const d = JSON.parse(e.data);
+
+    if (d.type === 'total') {
+      total = d.count;
+      document.getElementById('status').innerHTML = total === 0
+        ? 'No pending events. Hit <b>↻ Replay & Run</b> to reset.'
+        : '<span class="count">0</span> / ' + total + ' processed';
+      if (total === 0) finish();
+      return;
+    }
+
+    if (d.type === 'complete') {
+      finish();
+      return;
+    }
+
+    if (d.type === 'processing') {
+      addCard(d);
+      return;
+    }
+
+    if (d.type === 'done') {
+      done++;
+      updateCard(d);
+      document.getElementById('status').innerHTML = '<span class="count">' + done + '</span> / ' + total + ' processed';
+      return;
+    }
+
+    if (d.type === 'error') {
+      done++;
+      errorCard(d);
+      document.getElementById('status').innerHTML = '<span class="count">' + done + '</span> / ' + total + ' processed';
+      return;
+    }
+  };
+
+  eventSource.onerror = function() {
+    finish();
+  };
+}
+
+function replay() {
+  stop();
+  document.getElementById('cards').innerHTML = '';
+  document.getElementById('status').innerHTML = '<span class="spinner"></span> Resetting outbox...';
+
+  fetch('/api/replay', { method: 'POST' })
+    .then(r => r.json())
+    .then(d => {
+      document.getElementById('status').textContent = 'Reset ' + d.reset + ' event(s). Starting...';
+      setTimeout(run, 300);
+    })
+    .catch(err => {
+      document.getElementById('status').textContent = 'Replay failed: ' + err;
+    });
+}
+
+function stop() {
+  if (eventSource) { eventSource.close(); eventSource = null; }
+}
+
+function stopAndUnlock() {
+  stop();
+  finish();
+  document.getElementById('status').innerHTML += ' — <b>stopped</b>';
+}
+
+function finish() {
+  stop();
+  document.getElementById('btnRun').disabled = false;
+  document.getElementById('btnReplay').disabled = false;
+  document.getElementById('btnStop').style.display = 'none';
+  const s = document.getElementById('status');
+  if (!s.textContent.includes('No pending') && !s.textContent.includes('stopped')) {
+    s.innerHTML += ' — <b>done ✓</b>';
+  }
+}
+
+function addCard(d) {
+  const el = document.createElement('div');
+  el.className = 'card processing';
+  el.id = 'card-' + d.eventId;
+  el.innerHTML =
+    '<div class="card-header">' +
+      '<span class="card-title">#' + d.issueNum + ' — ' + esc(d.title) + '</span>' +
+      '<span class="card-badge badge-processing"><span class="spinner"></span>processing</span>' +
+    '</div>' +
+    '<div class="card-body">' + esc(d.body) + '</div>';
+  document.getElementById('cards').appendChild(el);
+}
+
+function updateCard(d) {
+  const el = document.getElementById('card-' + d.eventId);
+  if (!el) return;
+  el.className = 'card done';
+  el.innerHTML =
+    '<div class="card-header">' +
+      '<span class="card-title">#' + d.issueNum + ' — ' + esc(d.title) + '</span>' +
+      '<span class="card-badge badge-done">✓ done</span>' +
+    '</div>' +
+    '<div class="card-body">' + esc(d.body) + '</div>' +
+    '<div class="card-response">' + esc(d.response) + '</div>';
+}
+
+function errorCard(d) {
+  const id = 'card-' + d.eventId;
+  let el = document.getElementById(id);
+  if (!el) {
+    el = document.createElement('div');
+    el.id = id;
+    document.getElementById('cards').appendChild(el);
+  }
+  el.className = 'card error';
+  el.innerHTML =
+    '<div class="card-header">' +
+      '<span class="card-title">#' + d.issueNum + (d.title ? ' — ' + esc(d.title) : '') + '</span>' +
+      '<span class="card-badge badge-error">✗ error</span>' +
+    '</div>' +
+    '<div class="card-error">' + esc(d.error) + '</div>';
+}
+
+function esc(s) { const d = document.createElement('div'); d.textContent = s || ''; return d.innerHTML; }
+
+// --- Mode switching ---
+let currentMode = 'batch';
+
+function setMode(mode) {
+  currentMode = mode;
+  document.getElementById('tabBatch').className = 'mode-tab' + (mode === 'batch' ? ' active' : '');
+  document.getElementById('tabOneshot').className = 'mode-tab' + (mode === 'oneshot' ? ' active' : '');
+  document.getElementById('oneshotPanel').className = 'oneshot-panel' + (mode === 'oneshot' ? ' visible' : '');
+  document.getElementById('btnRun').style.display = mode === 'batch' ? '' : 'none';
+  document.getElementById('btnReplay').style.display = mode === 'batch' ? '' : 'none';
+}
+
+// --- Issue picker ---
+function loadIssues() {
+  fetch('/api/issues')
+    .then(r => r.json())
+    .then(issues => {
+      const sel = document.getElementById('issueSelect');
+      sel.innerHTML = '<option value="">— select issue —</option>';
+      issues.forEach(iss => {
+        const opt = document.createElement('option');
+        opt.value = iss.RepositoryID + ':' + iss.Number;
+        opt.textContent = '#' + iss.Number + ' — ' + iss.Title + ' [' + iss.State + ']';
+        sel.appendChild(opt);
+      });
+    });
+}
+loadIssues();
+
+// --- One-shot ---
+function runOneShot() {
+  const val = document.getElementById('issueSelect').value;
+  if (!val) return;
+
+  const [repoID, number] = val.split(':');
+  const prompt = encodeURIComponent(document.getElementById('prompt').value);
+
+  stop();
+  document.getElementById('cards').innerHTML = '';
+  document.getElementById('status').innerHTML = '<span class="spinner"></span> Analyzing...';
+  document.getElementById('btnOneshot').disabled = true;
+
+  eventSource = new EventSource('/api/oneshot?repo=' + repoID + '&number=' + number + '&prompt=' + prompt);
+
+  eventSource.onmessage = function(e) {
+    const d = JSON.parse(e.data);
+    if (d.type === 'processing') { addCard(d); return; }
+    if (d.type === 'done') { updateCard(d); document.getElementById('status').innerHTML = '<b>done ✓</b>'; return; }
+    if (d.type === 'error') { errorCard(d); document.getElementById('status').innerHTML = '<b>error</b>'; return; }
+    if (d.type === 'complete') { stop(); document.getElementById('btnOneshot').disabled = false; return; }
+  };
+
+  eventSource.onerror = function() {
+    stop();
+    document.getElementById('btnOneshot').disabled = false;
+  };
+}
+</script>
+</body>
+</html>

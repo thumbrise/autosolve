@@ -10,7 +10,7 @@ import (
 	"context"
 	"github.com/thumbrise/autosolve/cmd"
 	"github.com/thumbrise/autosolve/cmd/cmds"
-	"github.com/thumbrise/autosolve/internal/application"
+	"github.com/thumbrise/autosolve/internal/application/schedule"
 	config2 "github.com/thumbrise/autosolve/internal/config"
 	"github.com/thumbrise/autosolve/internal/domain/spec/preflights"
 	"github.com/thumbrise/autosolve/internal/domain/spec/workers"
@@ -20,6 +20,7 @@ import (
 	"github.com/thumbrise/autosolve/internal/infrastructure/database"
 	"github.com/thumbrise/autosolve/internal/infrastructure/github"
 	"github.com/thumbrise/autosolve/internal/infrastructure/limit"
+	"github.com/thumbrise/autosolve/internal/infrastructure/ollama"
 	"log/slog"
 )
 
@@ -45,13 +46,19 @@ func InitializeKernel(contextContext context.Context, reader *config.Reader, log
 	queries := sqlcgen.New()
 	repositoryRepository := repositories.NewRepositoryRepository(db, queries, logger)
 	repositoryValidator := preflights.NewRepositoryValidator(client, repositoryRepository, logger)
-	v := application.NewPreflights(repositoryValidator)
+	v := schedule.NewPreflights(repositoryValidator)
 	issueSyncer := repositories.NewIssueSyncer(db, queries, logger)
 	issuePoller := workers.NewIssuePoller(configGithub, client, logger, issueSyncer)
-	v2 := application.NewWorkers(issuePoller)
-	planner := application.NewPlanner(configGithub, v, v2, repositoryRepository)
-	scheduler := application.NewScheduler(planner, logger)
-	schedule := cmds.NewSchedule(scheduler)
+	configOllama, err := config2.NewOllama(contextContext, reader)
+	if err != nil {
+		return nil, err
+	}
+	ollamaClient := ollama.NewClient(configOllama)
+	issueExplainer := workers.NewIssueExplainer(db, queries, ollamaClient, logger)
+	v2 := schedule.NewWorkers(issuePoller, issueExplainer)
+	planner := schedule.NewPlanner(configGithub, v, v2, repositoryRepository)
+	scheduler := schedule.NewScheduler(planner, logger)
+	cmdsSchedule := cmds.NewSchedule(scheduler)
 	migrate := cmds.NewMigrate()
 	migrator, err := database.NewMigrator(db)
 	if err != nil {
@@ -65,7 +72,10 @@ func InitializeKernel(contextContext context.Context, reader *config.Reader, log
 	migrateRedo := cmds.NewMigrateRedo(migrator, logger)
 	test := cmds.NewTest(logger)
 	testSubTree := cmds.NewTestSubTree(logger)
-	v3 := cmd.NewCommands(schedule, migrate, migrateUp, migrateUpFresh, migrateDown, migrateStatus, migrateCreate, migrateRedo, test, testSubTree)
+	outbox := cmds.NewOutbox()
+	outboxReplay := cmds.NewOutboxReplay(db, logger)
+	dev := cmds.NewDev(db, queries, ollamaClient, logger)
+	v3 := cmd.NewCommands(cmdsSchedule, migrate, migrateUp, migrateUpFresh, migrateDown, migrateStatus, migrateCreate, migrateRedo, test, testSubTree, outbox, outboxReplay, dev)
 	root := cmd.NewRoot()
 	kernel := NewKernel(v3, db, logger, root)
 	return kernel, nil
