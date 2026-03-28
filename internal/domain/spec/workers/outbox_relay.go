@@ -27,7 +27,10 @@ import (
 	"github.com/thumbrise/autosolve/internal/infrastructure/dal/sqlcgen"
 )
 
-var ErrUnknownTopic = errors.New("unknown outbox topic")
+var (
+	ErrUnknownTopic = errors.New("unknown outbox topic")
+	ErrReadOutbox   = errors.New("read outbox")
+)
 
 const (
 	outboxTopicIssuesSynced = "issues:synced"
@@ -77,7 +80,7 @@ func (r *OutboxRelay) Run(ctx context.Context, tenant tenants.RepositoryTenant) 
 		Limit:        outboxBatchLimit,
 	})
 	if err != nil {
-		return fmt.Errorf("read outbox: %w", err)
+		return fmt.Errorf("%w: %w", ErrReadOutbox, err)
 	}
 
 	if len(events) == 0 {
