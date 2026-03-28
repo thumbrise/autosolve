@@ -1,20 +1,23 @@
 # Devlog
 
-How we got here. Design decisions, dead ends, and lessons learned — written after the fact, reconstructed from git history and code comments.
+Design decisions, dead ends, and lessons learned — in the order they happened.
 
-::: info Retroactive
-We didn't keep a devlog from day one (regret). These entries are reconstructed from commit history, README evolution, and the decisions baked into the code. Some details may be fuzzy, but the reasoning is real.
+::: tip
+Entries #1–#5 were reconstructed from git history after the fact (we didn't keep a devlog from day one — regret). Starting from #6, entries are written as things happen.
 :::
 
 ## Entries
 
-- [#1 — Why Polling, Not Webhooks](/devlog/001-why-polling) — the foundational choice
-- [#2 — Graceful Shutdown Is Hard](/devlog/002-graceful-shutdown) — three bugs in a row, all about context
-- [#3 — Building longrun](/devlog/003-building-longrun) — why we wrote our own task orchestration package
-- [#4 — From God Table to sqlc](/devlog/004-god-table-to-sqlc) — GORM → goose → sqlc, and why each step happened
-- [#5 — Two-Phase Scheduler](/devlog/005-two-phase-scheduler) — preflights, multi-repo, and the Planner pattern
-- [#6 — How I Over-Engineered an Event Bus](/devlog/006-over-engineered-event-bus) — generic contracts, God Objects, and the courage to delete
-- [#7 — Why I Built a Dev Dashboard Instead of Writing Tests](/devlog/007-dx-inner-loop) — DX, inner loop, and the throwaway tools that teach you more than tests
+| # | Title | Theme |
+|---|-------|-------|
+| 1 | [Why Polling, Not Webhooks](/devlog/001-why-polling) | Architecture |
+| 2 | [Graceful Shutdown Is Hard](/devlog/002-graceful-shutdown) | Bugs |
+| 3 | [Building longrun](/devlog/003-building-longrun) | Library |
+| 4 | [From God Table to sqlc](/devlog/004-god-table-to-sqlc) | Data layer |
+| 5 | [Two-Phase Scheduler](/devlog/005-two-phase-scheduler) | Architecture |
+| 6 | [How I Over-Engineered an Event Bus](/devlog/006-over-engineered-event-bus) | NIH / Delete |
+| 7 | [Why I Built a Dev Dashboard Instead of Writing Tests](/devlog/007-dx-inner-loop) | DX |
+| 8 | [goqite over hand-rolled jobs](/devlog/008-goqite-over-hand-rolled-jobs) | NIH / Delete |
 
 ---
 

@@ -81,7 +81,7 @@ Infrastructure implements it with JSON serialization into goqite. Domain doesn't
 - `jobs.sql.go` (283 lines generated) → gone
 - `JobRepository` (118 lines) → gone
 - `Job` entity (37 lines) → gone
-- `GlobalWorkerSpec` → gone (goqite's `jobs.Runner` covers this)
+- `GlobalWorkerSpec` → gone (goqite's `jobs.Runner` covers this). *Brought back in #156 as a minimal spec for non-repo-scoped workers. Full refactor to `TaskSpec[T]` deferred to #161.*
 
 Total: ~500 lines of hand-rolled code replaced by a 90-line wrapper over a proven library.
 

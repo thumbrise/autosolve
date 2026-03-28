@@ -9,9 +9,11 @@ Bootstrap (load config → Wire DI → Kernel)
     ↓
 Scheduler
   ├── Phase 1: Preflights (one-shot, all must pass)
-  └── Phase 2: Workers (long-running interval tasks)
-        ↓
-    longrun.Runner (per-error retry, backoff, degraded mode)
+  └── Phase 2: Workers
+        ├── Per-repo workers (multiplied by Planner)
+        └── Global workers (shared resources, not per-repo)
+              ↓
+          longrun.Runner (per-error retry, backoff, degraded mode)
 ```
 
 ## Directory Structure
@@ -24,7 +26,7 @@ internal/
 ├── domain/             Business logic
 │   └── spec/           Task specs + tenants
 │       ├── preflights/ RepositoryValidator
-│       ├── workers/    IssuePoller
+│       ├── workers/    IssuePoller, OutboxRelay, IssueExplainer
 │       └── tenants/    RepoTenant
 ├── application/        Orchestration layer
 │   ├── schedule.go     Two-phase Scheduler
