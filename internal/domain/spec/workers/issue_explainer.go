@@ -28,6 +28,7 @@ import (
 	"go.opentelemetry.io/otel/metric"
 	"maragu.dev/goqite"
 
+	"github.com/thumbrise/autosolve/internal/domain/spec"
 	"github.com/thumbrise/autosolve/internal/infrastructure/dal/sqlcgen"
 	"github.com/thumbrise/autosolve/internal/infrastructure/ollama"
 	"github.com/thumbrise/autosolve/internal/infrastructure/queue"
@@ -85,9 +86,12 @@ func NewIssueExplainer(db *sql.DB, queries *sqlcgen.Queries, queue *queue.Queue,
 	return &IssueExplainer{db: db, queries: queries, queue: queue, ollama: ollamaClient, logger: logger}
 }
 
-// Interval returns the poll interval for use by the scheduler.
-func (e *IssueExplainer) Interval() time.Duration {
-	return issueExplainerInterval
+func (e *IssueExplainer) TaskSpec() spec.GlobalWorkerSpec {
+	return spec.GlobalWorkerSpec{
+		Resource: "issue-explainer",
+		Interval: issueExplainerInterval,
+		Work:     e.Run,
+	}
 }
 
 // Run polls the queue once, processes one message if available.
@@ -176,7 +180,7 @@ func (e *IssueExplainer) explainIssue(ctx context.Context, msgID goqite.ID, job 
 		return fmt.Errorf("ollama generate for issue %d: %w", job.IssueID, err)
 	}
 
-	e.logger.InfoContext(ctx, "ollama response received",
+	e.logger.DebugContext(ctx, "ollama response received",
 		slog.Int64("issueId", job.IssueID),
 		slog.Int64("issueNumber", issue.Number),
 		slog.Int("responseLen", len(response)),

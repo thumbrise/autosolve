@@ -60,7 +60,8 @@ func InitializeKernel(contextContext context.Context, reader *config.Reader, log
 	}
 	ollamaClient := ollama.NewClient(configOllama)
 	issueExplainer := workers.NewIssueExplainer(db, queries, queueQueue, ollamaClient, logger)
-	scheduler := schedule.NewScheduler(planner, issueExplainer, logger)
+	v3 := schedule.NewGlobalWorkers(issueExplainer)
+	scheduler := schedule.NewScheduler(planner, v3, logger)
 	cmdsSchedule := cmds.NewSchedule(scheduler)
 	migrate := cmds.NewMigrate()
 	migrator, err := database.NewMigrator(db, configDatabase)
@@ -78,8 +79,8 @@ func InitializeKernel(contextContext context.Context, reader *config.Reader, log
 	outbox := cmds.NewOutbox()
 	outboxReplay := cmds.NewOutboxReplay(db, logger)
 	dev := cmds.NewDev(db, queries, ollamaClient, logger)
-	v3 := cmd.NewCommands(cmdsSchedule, migrate, migrateUp, migrateUpFresh, migrateDown, migrateStatus, migrateCreate, migrateRedo, test, testSubTree, outbox, outboxReplay, dev)
+	v4 := cmd.NewCommands(cmdsSchedule, migrate, migrateUp, migrateUpFresh, migrateDown, migrateStatus, migrateCreate, migrateRedo, test, testSubTree, outbox, outboxReplay, dev)
 	root := cmd.NewRoot()
-	kernel := NewKernel(v3, db, logger, root)
+	kernel := NewKernel(v4, db, logger, root)
 	return kernel, nil
 }

@@ -26,6 +26,7 @@ var Bindings = wire.NewSet(
 	NewPlanner,
 	NewPreflights,
 	NewWorkers,
+	NewGlobalWorkers,
 
 	preflights.NewRepositoryValidator,
 	workers.NewIssuePoller,
@@ -43,7 +44,7 @@ func NewPreflights(
 	}
 }
 
-// NewWorkers registers all worker tasks.
+// NewWorkers registers all per-repository worker tasks.
 // Add new workers here when extending the system.
 func NewWorkers(
 	issuePoller *workers.IssuePoller,
@@ -52,5 +53,15 @@ func NewWorkers(
 	return []Worker{
 		issuePoller,
 		outboxRelay,
+	}
+}
+
+// NewGlobalWorkers registers all global worker tasks (not multiplied per repository).
+// Add new global workers here when extending the system.
+func NewGlobalWorkers(
+	issueExplainer *workers.IssueExplainer,
+) []GlobalWorker {
+	return []GlobalWorker{
+		issueExplainer,
 	}
 }

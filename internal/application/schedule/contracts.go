@@ -36,3 +36,13 @@ type Preflight interface {
 type Worker interface {
 	TaskSpec() spec.WorkerSpec
 }
+
+// GlobalWorker is a long-running interval task not scoped to a repository.
+// Implementations return a GlobalWorkerSpec describing work on shared resources.
+//
+// Task naming convention: worker:{Resource}
+// Examples:
+//   - worker:issue-explainer
+type GlobalWorker interface {
+	TaskSpec() spec.GlobalWorkerSpec
+}

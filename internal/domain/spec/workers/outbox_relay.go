@@ -154,7 +154,7 @@ func (r *OutboxRelay) relayBatch(ctx context.Context, events []sqlcgen.PendingOu
 
 	for _, ev := range events {
 		if ctx.Err() != nil {
-			return 0, 0
+			return relayed, failed
 		}
 
 		if err := r.relayEvent(ctx, ev); err != nil {

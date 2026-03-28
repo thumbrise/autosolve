@@ -50,3 +50,18 @@ type WorkerSpec struct {
 	Interval time.Duration
 	Work     func(ctx context.Context, tenant tenants.RepositoryTenant) error
 }
+
+// GlobalWorkerSpec describes a long-running interval task not scoped to a repository.
+// Unlike WorkerSpec, its Work function takes only context — no tenant parameter.
+//
+// Defined by domain, consumed by Scheduler directly (not multiplied by Planner).
+// Full refactor to unified TaskSpec[T] deferred to #161.
+//
+// Task naming convention: worker:{Resource}
+// Examples:
+//   - worker:issue-explainer
+type GlobalWorkerSpec struct {
+	Resource string
+	Interval time.Duration
+	Work     func(ctx context.Context) error
+}

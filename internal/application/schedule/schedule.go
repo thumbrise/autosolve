@@ -20,24 +20,23 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/thumbrise/autosolve/internal/domain/spec/workers"
 	"github.com/thumbrise/autosolve/pkg/longrun"
 )
 
 // Scheduler orchestrates execution in two phases:
 //  1. Preflights — one-shot tasks, all must pass before workers start.
-//  2. Workers — long-running interval tasks.
+//  2. Workers — long-running interval tasks (per-repo and global).
 //
 // Scheduler is generic — it doesn't know about repositories, GitHub, or issues.
-// It only knows phases and task units provided by Planner.
+// It only knows phases and task units provided by Planner and global workers.
 type Scheduler struct {
-	planner        *Planner
-	issueExplainer *workers.IssueExplainer
-	logger         *slog.Logger
+	planner       *Planner
+	globalWorkers []GlobalWorker
+	logger        *slog.Logger
 }
 
-func NewScheduler(planner *Planner, issueExplainer *workers.IssueExplainer, logger *slog.Logger) *Scheduler {
-	return &Scheduler{planner: planner, issueExplainer: issueExplainer, logger: logger}
+func NewScheduler(planner *Planner, globalWorkers []GlobalWorker, logger *slog.Logger) *Scheduler {
+	return &Scheduler{planner: planner, globalWorkers: globalWorkers, logger: logger}
 }
 
 func (s *Scheduler) Run(ctx context.Context) error {
@@ -93,13 +92,11 @@ func (s *Scheduler) runWorkers(ctx context.Context) error {
 	}
 
 	// Global workers — not multiplied per repository.
-	// IssueExplainer consumes the shared goqite queue directly.
-	runner.Add(longrun.NewIntervalTask(
-		"worker:issue-explainer",
-		s.issueExplainer.Interval(),
-		s.issueExplainer.Run,
-		nil,
-	))
+	for _, gw := range s.globalWorkers {
+		s := gw.TaskSpec()
+		name := "worker:" + s.Resource
+		runner.Add(longrun.NewIntervalTask(name, s.Interval, s.Work, nil))
+	}
 
 	return runner.Wait(ctx)
 }
