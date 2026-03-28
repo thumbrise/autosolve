@@ -21,8 +21,8 @@ import (
 )
 
 type Ollama struct {
-	Endpoint string
-	Model    string
+	Endpoint string `validate:"required"`
+	Model    string `validate:"required"`
 }
 
 func NewOllama(ctx context.Context, reader *config.Reader) (*Ollama, error) {

@@ -41,6 +41,25 @@ func (q *Queries) GetByOwnerName(ctx context.Context, db DBTX, arg GetByOwnerNam
 	return id, err
 }
 
+const getRepositoryByID = `-- name: GetRepositoryByID :one
+SELECT id, owner, name
+FROM repositories
+WHERE id = ?
+`
+
+type GetRepositoryByIDRow struct {
+	ID    int64
+	Owner string
+	Name  string
+}
+
+func (q *Queries) GetRepositoryByID(ctx context.Context, db DBTX, id int64) (GetRepositoryByIDRow, error) {
+	row := db.QueryRowContext(ctx, getRepositoryByID, id)
+	var i GetRepositoryByIDRow
+	err := row.Scan(&i.ID, &i.Owner, &i.Name)
+	return i, err
+}
+
 const upsertRepository = `-- name: UpsertRepository :one
 INSERT INTO repositories (owner, name, created_at, updated_at)
 VALUES (?, ?, datetime('now'), datetime('now'))

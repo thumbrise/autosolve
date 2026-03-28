@@ -35,6 +35,7 @@ type Github struct {
 	} `validate:"required"`
 	Issues struct {
 		ParseInterval time.Duration `validate:"required"`
+		RequiredLabel string
 	}
 }
 

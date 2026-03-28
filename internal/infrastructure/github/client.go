@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"strings"
 
 	"github.com/google/go-github/v84/github"
 
@@ -160,6 +161,91 @@ func (p *Client) GetRepository(ctx context.Context, owner, repo string) (*github
 	}
 
 	return r, nil
+}
+
+// HasCommentWithMarker checks whether any comment on the issue contains the given marker string.
+// Used for feedback loop prevention: if autosolve already posted, skip re-processing.
+// Fetches up to 100 comments per page and paginates until found or exhausted.
+// Errors are classified via mapError (rate limit, 5xx, transport).
+func (p *Client) HasCommentWithMarker(ctx context.Context, owner, repo string, number int, marker string) (bool, error) {
+	ctx, span := tracer.Start(ctx, "Client.HasCommentWithMarker")
+	defer span.End()
+
+	opts := &github.IssueListCommentsOptions{
+		Sort:      github.Ptr("created"),
+		Direction: github.Ptr("desc"),
+		ListOptions: github.ListOptions{
+			Page:    1,
+			PerPage: 100,
+		},
+	}
+
+	for {
+		comments, resp, err := p.githubClient.Issues.ListComments(ctx, owner, repo, number, opts)
+		p.writeMetrics(ctx, resp)
+
+		if err != nil {
+			return false, p.mapError(err)
+		}
+
+		if resp == nil {
+			return false, ErrUnexpectedNilResponse
+		}
+
+		for _, c := range comments {
+			if strings.Contains(c.GetBody(), marker) {
+				return true, nil
+			}
+		}
+
+		if resp.NextPage == 0 {
+			break
+		}
+
+		opts.Page = resp.NextPage
+	}
+
+	return false, nil
+}
+
+// GetIssueLabels fetches the labels on a GitHub issue.
+// Returns an empty slice when the issue has no labels.
+// Errors are classified via mapError (rate limit, 5xx, transport).
+func (p *Client) GetIssueLabels(ctx context.Context, owner, repo string, number int) ([]string, error) {
+	ctx, span := tracer.Start(ctx, "Client.GetIssueLabels")
+	defer span.End()
+
+	issue, resp, err := p.githubClient.Issues.Get(ctx, owner, repo, number)
+	p.writeMetrics(ctx, resp)
+
+	if err != nil {
+		return nil, p.mapError(err)
+	}
+
+	labels := make([]string, 0, len(issue.Labels))
+	for _, l := range issue.Labels {
+		labels = append(labels, l.GetName())
+	}
+
+	return labels, nil
+}
+
+// CreateIssueComment posts a comment on a GitHub issue.
+// Errors are classified via mapError (rate limit, 5xx, transport).
+func (p *Client) CreateIssueComment(ctx context.Context, owner, repo string, number int, body string) error {
+	ctx, span := tracer.Start(ctx, "Client.CreateIssueComment")
+	defer span.End()
+
+	comment := &github.IssueComment{Body: github.Ptr(body)}
+
+	_, resp, err := p.githubClient.Issues.CreateComment(ctx, owner, repo, number, comment)
+	p.writeMetrics(ctx, resp)
+
+	if err != nil {
+		return p.mapError(err)
+	}
+
+	return nil
 }
 
 func (p *Client) writeMetrics(ctx context.Context, resp *github.Response) {

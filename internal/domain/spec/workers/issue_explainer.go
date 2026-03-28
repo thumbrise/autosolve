@@ -21,6 +21,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"slices"
 	"time"
 
 	"go.opentelemetry.io/otel"
@@ -28,8 +29,10 @@ import (
 	"go.opentelemetry.io/otel/metric"
 	"maragu.dev/goqite"
 
+	"github.com/thumbrise/autosolve/internal/config"
 	"github.com/thumbrise/autosolve/internal/domain/spec"
 	"github.com/thumbrise/autosolve/internal/infrastructure/dal/sqlcgen"
+	githubinfra "github.com/thumbrise/autosolve/internal/infrastructure/github"
 	"github.com/thumbrise/autosolve/internal/infrastructure/ollama"
 	"github.com/thumbrise/autosolve/internal/infrastructure/queue"
 )
@@ -67,23 +70,31 @@ const (
 
 	// issueExplainPrompt is the default prompt sent to Ollama for issue classification.
 	issueExplainPrompt = "Classify this GitHub issue. Suggest priority (critical/high/medium/low) and component."
+
+	// autosolveMarker is an HTML comment embedded in every bot-posted comment.
+	// Used to detect feedback loops: if the last comment on an issue contains this
+	// marker, the explainer skips processing to avoid infinite re-triggering.
+	autosolveMarker = "<!-- autosolve -->"
 )
 
 // IssueExplainer consumes "issue-explain" jobs from the goqite queue,
-// sends issue content to Ollama for AI analysis, and logs the result.
+// sends issue content to Ollama for AI analysis, and posts the result
+// as a comment on the corresponding GitHub issue.
 //
 // It is a global worker — not multiplied per repository.
 // The queue is shared; each JobMessage already contains repositoryId.
 type IssueExplainer struct {
+	cfg     *config.Github
 	db      *sql.DB
 	queries *sqlcgen.Queries
 	queue   *queue.Queue
 	ollama  *ollama.Client
+	github  *githubinfra.Client
 	logger  *slog.Logger
 }
 
-func NewIssueExplainer(db *sql.DB, queries *sqlcgen.Queries, queue *queue.Queue, ollamaClient *ollama.Client, logger *slog.Logger) *IssueExplainer {
-	return &IssueExplainer{db: db, queries: queries, queue: queue, ollama: ollamaClient, logger: logger}
+func NewIssueExplainer(cfg *config.Github, db *sql.DB, queries *sqlcgen.Queries, queue *queue.Queue, ollamaClient *ollama.Client, githubClient *githubinfra.Client, logger *slog.Logger) *IssueExplainer {
+	return &IssueExplainer{cfg: cfg, db: db, queries: queries, queue: queue, ollama: ollamaClient, github: githubClient, logger: logger}
 }
 
 func (e *IssueExplainer) TaskSpec() spec.GlobalWorkerSpec {
@@ -159,6 +170,84 @@ func (e *IssueExplainer) explainIssue(ctx context.Context, msgID goqite.ID, job 
 		return fmt.Errorf("load issue %d: %w", job.IssueID, err)
 	}
 
+	repo, err := e.queries.GetRepositoryByID(ctx, e.db, job.RepositoryID)
+	if err != nil {
+		metricJobsFailed.Add(ctx, 1, typeAttr)
+
+		return fmt.Errorf("load repository %d: %w", job.RepositoryID, err)
+	}
+
+	skip, err := e.shouldSkip(ctx, repo, issue, job)
+	if err != nil {
+		metricJobsFailed.Add(ctx, 1, typeAttr)
+
+		return err
+	}
+
+	if skip {
+		return e.queue.Delete(ctx, msgID)
+	}
+
+	if err := e.analyzeAndPost(ctx, repo, issue, job, typeAttr); err != nil {
+		metricJobsFailed.Add(ctx, 1, typeAttr)
+
+		return err
+	}
+
+	if err := e.queue.Delete(ctx, msgID); err != nil {
+		return fmt.Errorf("delete message for issue %d: %w", job.IssueID, err)
+	}
+
+	metricJobsProcessed.Add(ctx, 1, typeAttr)
+
+	e.logger.InfoContext(ctx, "job complete",
+		slog.Int64("issueId", job.IssueID),
+		slog.Int64("issueNumber", issue.Number),
+		slog.String("type", job.Type),
+	)
+
+	return nil
+}
+
+// shouldSkip returns true when the issue must not be analyzed.
+// Reasons: missing required label, or already responded (marker found in comments).
+func (e *IssueExplainer) shouldSkip(ctx context.Context, repo sqlcgen.GetRepositoryByIDRow, issue sqlcgen.GetIssueByIDRow, job queue.JobMessage) (bool, error) {
+	if label := e.cfg.Issues.RequiredLabel; label != "" {
+		labels, err := e.github.GetIssueLabels(ctx, repo.Owner, repo.Name, int(issue.Number))
+		if err != nil {
+			return false, fmt.Errorf("get labels for issue %d: %w", job.IssueID, err)
+		}
+
+		if !slices.Contains(labels, label) {
+			e.logger.InfoContext(ctx, "skipping issue, missing required label",
+				slog.Int64("issueId", job.IssueID),
+				slog.Int64("issueNumber", issue.Number),
+				slog.String("requiredLabel", label),
+			)
+
+			return true, nil
+		}
+	}
+
+	alreadyResponded, err := e.github.HasCommentWithMarker(ctx, repo.Owner, repo.Name, int(issue.Number), autosolveMarker)
+	if err != nil {
+		return false, fmt.Errorf("check marker for issue %d: %w", job.IssueID, err)
+	}
+
+	if alreadyResponded {
+		e.logger.InfoContext(ctx, "skipping issue, already responded",
+			slog.Int64("issueId", job.IssueID),
+			slog.Int64("issueNumber", issue.Number),
+		)
+
+		return true, nil
+	}
+
+	return false, nil
+}
+
+// analyzeAndPost sends the issue to Ollama and posts the response as a GitHub comment.
+func (e *IssueExplainer) analyzeAndPost(ctx context.Context, repo sqlcgen.GetRepositoryByIDRow, issue sqlcgen.GetIssueByIDRow, job queue.JobMessage, typeAttr metric.MeasurementOption) error {
 	prompt := fmt.Sprintf("%s\n\nTitle: %s\nBody: %s", issueExplainPrompt, issue.Title, issue.Body)
 
 	e.logger.InfoContext(ctx, "calling ollama",
@@ -175,8 +264,6 @@ func (e *IssueExplainer) explainIssue(ctx context.Context, msgID goqite.ID, job 
 	metricOllamaDuration.Record(ctx, ollamaElapsed.Seconds(), typeAttr)
 
 	if err != nil {
-		metricJobsFailed.Add(ctx, 1, typeAttr)
-
 		return fmt.Errorf("ollama generate for issue %d: %w", job.IssueID, err)
 	}
 
@@ -188,17 +275,23 @@ func (e *IssueExplainer) explainIssue(ctx context.Context, msgID goqite.ID, job 
 		slog.String("response", response),
 	)
 
-	if err := e.queue.Delete(ctx, msgID); err != nil {
-		return fmt.Errorf("delete message for issue %d: %w", job.IssueID, err)
+	commentBody := formatComment(e.ollama.Model(), response)
+
+	if err := e.github.CreateIssueComment(ctx, repo.Owner, repo.Name, int(issue.Number), commentBody); err != nil {
+		return fmt.Errorf("post comment for issue %d: %w", job.IssueID, err)
 	}
 
-	metricJobsProcessed.Add(ctx, 1, typeAttr)
-
-	e.logger.InfoContext(ctx, "job complete",
+	e.logger.InfoContext(ctx, "comment posted",
 		slog.Int64("issueId", job.IssueID),
 		slog.Int64("issueNumber", issue.Number),
-		slog.String("type", job.Type),
+		slog.String("repo", repo.Owner+"/"+repo.Name),
 	)
 
 	return nil
+}
+
+// formatComment builds the Markdown comment body with the autosolve marker.
+func formatComment(model, response string) string {
+	return fmt.Sprintf("%s\n## AI Analysis\n**Model:** %s\n\n---\n\n%s\n\n---\n\n_Generated by autosolve_",
+		autosolveMarker, model, response)
 }
