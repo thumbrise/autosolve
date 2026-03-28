@@ -13,6 +13,7 @@ We didn't keep a devlog from day one (regret). These entries are reconstructed f
 - [#3 — Building longrun](/devlog/003-building-longrun) — why we wrote our own task orchestration package
 - [#4 — From God Table to sqlc](/devlog/004-god-table-to-sqlc) — GORM → goose → sqlc, and why each step happened
 - [#5 — Two-Phase Scheduler](/devlog/005-two-phase-scheduler) — preflights, multi-repo, and the Planner pattern
+- [#6 — How I Over-Engineered an Event Bus](/devlog/006-over-engineered-event-bus) — generic contracts, God Objects, and the courage to delete
 
 ---
 
