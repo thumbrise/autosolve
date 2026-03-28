@@ -69,6 +69,8 @@ func (r *OutboxRelay) TaskSpec() spec.WorkerSpec {
 }
 
 func (r *OutboxRelay) Run(ctx context.Context, tenant tenants.RepositoryTenant) error {
+	start := time.Now()
+
 	events, err := r.queries.PendingOutboxEvents(ctx, r.db, sqlcgen.PendingOutboxEventsParams{
 		Topic:        outboxTopicIssuesSynced,
 		RepositoryID: tenant.RepositoryID,
@@ -79,10 +81,20 @@ func (r *OutboxRelay) Run(ctx context.Context, tenant tenants.RepositoryTenant) 
 	}
 
 	if len(events) == 0 {
+		r.logger.DebugContext(ctx, "outbox empty, nothing to relay",
+			slog.String("topic", outboxTopicIssuesSynced),
+		)
+
 		return nil
 	}
 
-	r.logger.InfoContext(ctx, "relaying outbox events to jobs", slog.Int("count", len(events)))
+	r.logger.InfoContext(ctx, "relaying outbox events to jobs",
+		slog.Int("count", len(events)),
+		slog.Int("batchLimit", outboxBatchLimit),
+		slog.Bool("batchFull", len(events) == outboxBatchLimit),
+	)
+
+	var relayed, failed int
 
 	for _, ev := range events {
 		if ctx.Err() != nil {
@@ -90,6 +102,8 @@ func (r *OutboxRelay) Run(ctx context.Context, tenant tenants.RepositoryTenant) 
 		}
 
 		if err := r.relayEvent(ctx, ev); err != nil {
+			failed++
+
 			r.logger.ErrorContext(ctx, "failed to relay event",
 				slog.Int64("eventId", ev.ID),
 				slog.Int64("resourceId", ev.ResourceID),
@@ -98,7 +112,16 @@ func (r *OutboxRelay) Run(ctx context.Context, tenant tenants.RepositoryTenant) 
 
 			continue
 		}
+
+		relayed++
 	}
+
+	r.logger.InfoContext(ctx, "relay batch complete",
+		slog.Int("relayed", relayed),
+		slog.Int("failed", failed),
+		slog.Int("total", len(events)),
+		slog.Duration("elapsed", time.Since(start)),
+	)
 
 	return nil
 }
@@ -110,6 +133,12 @@ func (r *OutboxRelay) relayEvent(ctx context.Context, ev sqlcgen.PendingOutboxEv
 		return fmt.Errorf("%w: %s", ErrUnknownTopic, ev.Topic)
 	}
 
+	r.logger.DebugContext(ctx, "relay: resolving issue",
+		slog.Int64("eventId", ev.ID),
+		slog.String("topic", ev.Topic),
+		slog.Int64("resourceId", ev.ResourceID),
+	)
+
 	issue, err := r.queries.GetIssueByRepoAndNumber(ctx, r.db, sqlcgen.GetIssueByRepoAndNumberParams{
 		RepositoryID: ev.RepositoryID,
 		Number:       ev.ResourceID,
@@ -117,6 +146,13 @@ func (r *OutboxRelay) relayEvent(ctx context.Context, ev sqlcgen.PendingOutboxEv
 	if err != nil {
 		return fmt.Errorf("get issue #%d: %w", ev.ResourceID, err)
 	}
+
+	r.logger.DebugContext(ctx, "relay: sending to queue",
+		slog.Int64("eventId", ev.ID),
+		slog.String("type", jobType),
+		slog.Int64("issueId", issue.ID),
+		slog.String("issueTitle", issue.Title),
+	)
 
 	if err := r.queue.Send(ctx, jobType, ev.RepositoryID, issue.ID); err != nil {
 		return fmt.Errorf("enqueue job for issue #%d: %w", ev.ResourceID, err)
@@ -126,9 +162,11 @@ func (r *OutboxRelay) relayEvent(ctx context.Context, ev sqlcgen.PendingOutboxEv
 		return fmt.Errorf("ack event %d: %w", ev.ID, err)
 	}
 
-	r.logger.DebugContext(ctx, "job enqueued from outbox",
+	r.logger.DebugContext(ctx, "relay: event processed",
+		slog.Int64("eventId", ev.ID),
 		slog.String("type", jobType),
 		slog.Int64("issueId", issue.ID),
+		slog.Duration("eventAge", time.Since(ev.CreatedAt)),
 	)
 
 	return nil
