@@ -93,9 +93,9 @@ func (s *Scheduler) runWorkers(ctx context.Context) error {
 
 	// Global workers — not multiplied per repository.
 	for _, gw := range s.globalWorkers {
-		s := gw.TaskSpec()
-		name := "worker:" + s.Resource
-		runner.Add(longrun.NewIntervalTask(name, s.Interval, s.Work, nil))
+		gs := gw.TaskSpec()
+		name := "worker:" + gs.Resource
+		runner.Add(longrun.NewIntervalTask(name, gs.Interval, gs.Work, nil))
 	}
 
 	return runner.Wait(ctx)
