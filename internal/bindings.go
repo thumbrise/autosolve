@@ -26,6 +26,7 @@ import (
 	"github.com/thumbrise/autosolve/internal/infrastructure/github"
 	"github.com/thumbrise/autosolve/internal/infrastructure/limit"
 	"github.com/thumbrise/autosolve/internal/infrastructure/ollama"
+	"github.com/thumbrise/autosolve/internal/infrastructure/queue"
 )
 
 var Bindings = wire.NewSet(
@@ -51,5 +52,7 @@ var Bindings = wire.NewSet(
 	wire.Bind(new(workers.IssueSyncRepo), new(*repositories.IssueSyncer)),
 
 	repositories.NewRepositoryRepository,
-	repositories.NewJobRepository,
+
+	queue.NewQueue,
+	wire.Bind(new(workers.JobQueue), new(*queue.Queue)),
 )

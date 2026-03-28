@@ -21,6 +21,7 @@ import (
 	"github.com/thumbrise/autosolve/internal/infrastructure/github"
 	"github.com/thumbrise/autosolve/internal/infrastructure/limit"
 	"github.com/thumbrise/autosolve/internal/infrastructure/ollama"
+	"github.com/thumbrise/autosolve/internal/infrastructure/queue"
 	"log/slog"
 )
 
@@ -49,14 +50,14 @@ func InitializeKernel(contextContext context.Context, reader *config.Reader, log
 	v := schedule.NewPreflights(repositoryValidator)
 	issueSyncer := repositories.NewIssueSyncer(db, queries, logger)
 	issuePoller := workers.NewIssuePoller(configGithub, client, logger, issueSyncer)
-	jobRepository := repositories.NewJobRepository(db, queries, logger)
-	outboxRelay := workers.NewOutboxRelay(db, queries, jobRepository, logger)
+	queueQueue := queue.NewQueue(db)
+	outboxRelay := workers.NewOutboxRelay(db, queries, queueQueue, logger)
 	v2 := schedule.NewWorkers(issuePoller, outboxRelay)
 	planner := schedule.NewPlanner(configGithub, v, v2, repositoryRepository)
 	scheduler := schedule.NewScheduler(planner, logger)
 	cmdsSchedule := cmds.NewSchedule(scheduler)
 	migrate := cmds.NewMigrate()
-	migrator, err := database.NewMigrator(db)
+	migrator, err := database.NewMigrator(db, configDatabase)
 	if err != nil {
 		return nil, err
 	}

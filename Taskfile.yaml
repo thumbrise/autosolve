@@ -75,6 +75,18 @@ tasks:
       - go test ./... -v -tags=test
       - go test ./... -v -tags=test -run=NONE -bench=. -benchmem
 
+  migrate:
+    desc: Apply all migrations
+    cmds:
+      - go run . migrate up {{.CLI_ARGS}}
+    interactive: true
+
+  migrate:fresh:
+    desc: Apply all migrations from scratch
+    cmds:
+      - go run . migrate up:fresh {{.CLI_ARGS}}
+    interactive: true
+
   migrate:create:
     desc: Create a new SQL migration
     cmds:

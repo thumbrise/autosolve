@@ -22,10 +22,8 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/thumbrise/autosolve/internal/domain/entities"
 	"github.com/thumbrise/autosolve/internal/domain/spec"
 	"github.com/thumbrise/autosolve/internal/domain/spec/tenants"
-	"github.com/thumbrise/autosolve/internal/infrastructure/dal/repositories"
 	"github.com/thumbrise/autosolve/internal/infrastructure/dal/sqlcgen"
 )
 
@@ -34,24 +32,32 @@ var ErrUnknownTopic = errors.New("unknown outbox topic")
 const (
 	outboxTopicIssuesSynced = "issues:synced"
 	outboxBatchLimit        = 20
+
+	jobTypeIssueExplain = "issue-explain"
 )
 
 // topicJobType maps outbox topics to job types. Extend when new topics appear.
 var topicJobType = map[string]string{
-	outboxTopicIssuesSynced: entities.JobTypeIssueExplain,
+	outboxTopicIssuesSynced: jobTypeIssueExplain,
 }
 
-// OutboxRelay reads outbox events and creates pending jobs for downstream processors.
+// JobQueue is the interface OutboxRelay uses to enqueue work.
+// Implemented by infrastructure/queue.Queue.
+type JobQueue interface {
+	Send(ctx context.Context, jobType string, repositoryID, issueID int64) error
+}
+
+// OutboxRelay reads outbox events and enqueues jobs for downstream processors.
 // It does not know what happens with the job — only that an event should become a job.
 type OutboxRelay struct {
 	db      *sql.DB
 	queries *sqlcgen.Queries
-	jobRepo *repositories.JobRepository
+	queue   JobQueue
 	logger  *slog.Logger
 }
 
-func NewOutboxRelay(db *sql.DB, queries *sqlcgen.Queries, jobRepo *repositories.JobRepository, logger *slog.Logger) *OutboxRelay {
-	return &OutboxRelay{db: db, queries: queries, jobRepo: jobRepo, logger: logger}
+func NewOutboxRelay(db *sql.DB, queries *sqlcgen.Queries, queue JobQueue, logger *slog.Logger) *OutboxRelay {
+	return &OutboxRelay{db: db, queries: queries, queue: queue, logger: logger}
 }
 
 func (r *OutboxRelay) TaskSpec() spec.WorkerSpec {
@@ -98,9 +104,10 @@ func (r *OutboxRelay) Run(ctx context.Context, tenant tenants.RepositoryTenant) 
 }
 
 func (r *OutboxRelay) relayEvent(ctx context.Context, ev sqlcgen.PendingOutboxEventsRow) error {
-	jobType, ok := topicJobType[outboxTopicIssuesSynced]
+	jobType, ok := topicJobType[ev.Topic]
+
 	if !ok {
-		return fmt.Errorf("%w: %s", ErrUnknownTopic, outboxTopicIssuesSynced)
+		return fmt.Errorf("%w: %s", ErrUnknownTopic, ev.Topic)
 	}
 
 	issue, err := r.queries.GetIssueByRepoAndNumber(ctx, r.db, sqlcgen.GetIssueByRepoAndNumberParams{
@@ -111,17 +118,15 @@ func (r *OutboxRelay) relayEvent(ctx context.Context, ev sqlcgen.PendingOutboxEv
 		return fmt.Errorf("get issue #%d: %w", ev.ResourceID, err)
 	}
 
-	job, err := r.jobRepo.Create(ctx, ev.RepositoryID, issue.ID, jobType, "", nil)
-	if err != nil {
-		return fmt.Errorf("create job for issue #%d: %w", ev.ResourceID, err)
+	if err := r.queue.Send(ctx, jobType, ev.RepositoryID, issue.ID); err != nil {
+		return fmt.Errorf("enqueue job for issue #%d: %w", ev.ResourceID, err)
 	}
 
 	if err := r.queries.AckOutboxEvent(ctx, r.db, ev.ID); err != nil {
 		return fmt.Errorf("ack event %d: %w", ev.ID, err)
 	}
 
-	r.logger.DebugContext(ctx, "job created from outbox",
-		slog.Int64("jobId", job.ID),
+	r.logger.DebugContext(ctx, "job enqueued from outbox",
 		slog.String("type", jobType),
 		slog.Int64("issueId", issue.ID),
 	)
