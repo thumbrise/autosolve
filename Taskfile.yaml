@@ -4,7 +4,9 @@ version: '3.17'
 tasks:
   up:
     desc: run scheduler
-    cmd: go run . schedule
+    cmds:
+      - go run . migrate up -y
+      - go run . schedule
 
   infra:
     desc: docker compose arguments. Example [task c -- up -d]. -- required

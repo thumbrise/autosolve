@@ -23,51 +23,34 @@ import (
 	"github.com/thumbrise/autosolve/internal/config"
 	"github.com/thumbrise/autosolve/internal/domain/entities"
 	"github.com/thumbrise/autosolve/internal/domain/spec"
-	"github.com/thumbrise/autosolve/internal/domain/spec/resources"
 	"github.com/thumbrise/autosolve/internal/domain/spec/tenants"
-	"github.com/thumbrise/autosolve/internal/infrastructure/dal"
-	"github.com/thumbrise/autosolve/internal/infrastructure/dal/repositories"
 	githubinfra "github.com/thumbrise/autosolve/internal/infrastructure/github"
 )
 
-// Sentinel errors for classifying poller failures.
-// Callers can use these with errors.Is to decide retry strategy.
+// IssueSyncRepo is the interface the poller depends on — aggregate root for issue sync.
+type IssueSyncRepo interface {
+	Save(ctx context.Context, repositoryID int64, issues []*entities.Issue, cursor entities.Cursor) error
+	Cursor(ctx context.Context, repositoryID int64) (entities.Cursor, error)
+}
+
 var (
 	ErrFetchIssues = errors.New("fetch issues")
-	ErrStoreIssues = errors.New("store issues")
 	ErrReadCursor  = errors.New("read cursor")
-	ErrSaveCursor  = errors.New("save cursor")
+	ErrSave        = errors.New("save sync")
 )
 
-// IssuePoller fetches and stores issues for a repository.
-// Stateless per repository — owner, repo and repositoryID are received
-// via RepositoryTenant at each invocation.
-// Implements application.Worker via TaskSpec().
+// IssuePoller fetches issues from GitHub and persists them via IssueSyncRepo.
 type IssuePoller struct {
+	cfg          *config.Github
 	githubClient *githubinfra.Client
 	logger       *slog.Logger
-	issueRepo    *repositories.IssueRepository
-	cursorRepo   *repositories.SyncCursorRepository
-	cfg          *config.Github
+	syncRepo     IssueSyncRepo
 }
 
-func NewIssuePoller(
-	cfg *config.Github,
-	githubClient *githubinfra.Client,
-	issueRepo *repositories.IssueRepository,
-	cursorRepo *repositories.SyncCursorRepository,
-	logger *slog.Logger,
-) *IssuePoller {
-	return &IssuePoller{
-		cfg:          cfg,
-		githubClient: githubClient,
-		issueRepo:    issueRepo,
-		cursorRepo:   cursorRepo,
-		logger:       logger,
-	}
+func NewIssuePoller(cfg *config.Github, githubClient *githubinfra.Client, logger *slog.Logger, syncRepo IssueSyncRepo) *IssuePoller {
+	return &IssuePoller{cfg: cfg, githubClient: githubClient, logger: logger, syncRepo: syncRepo}
 }
 
-// TaskSpec returns a WorkerSpec for polling issues.
 func (p *IssuePoller) TaskSpec() spec.WorkerSpec {
 	return spec.WorkerSpec{
 		Resource: "issue-poller",
@@ -77,12 +60,12 @@ func (p *IssuePoller) TaskSpec() spec.WorkerSpec {
 }
 
 func (p *IssuePoller) Run(ctx context.Context, tenant tenants.RepositoryTenant) error {
-	p.logger.DebugContext(ctx, "starting request to list issues",
+	p.logger.DebugContext(ctx, "polling issues",
 		slog.String("owner", tenant.Owner),
 		slog.String("name", tenant.Name),
 	)
 
-	cursor, err := p.findCursor(ctx, tenant.RepositoryID)
+	cursor, err := p.syncRepo.Cursor(ctx, tenant.RepositoryID)
 	if err != nil {
 		return fmt.Errorf("%w: %w", ErrReadCursor, err)
 	}
@@ -94,53 +77,48 @@ func (p *IssuePoller) Run(ctx context.Context, tenant tenants.RepositoryTenant) 
 
 	if resp.NotModified {
 		p.logger.InfoContext(ctx, "not modified, skipping")
-
-		return nil
-	}
-
-	if len(resp.Issues) == 0 {
-		// Save cursor even on empty page — otherwise catch-up (Page > 1) gets stuck
-		// re-fetching the same empty page forever.
-		// buildNextCursor resets Page to 1 when no more pages remain.
-		if err := p.saveCursor(ctx, tenant.RepositoryID, resp.NextCursor); err != nil {
-			return fmt.Errorf("%w: %w", ErrSaveCursor, err)
-		}
-
 		p.adaptPollingInterval(ctx)
 
-		p.logger.InfoContext(ctx, "no new issues found")
+		return nil
+	}
+
+	nextCursor := p.buildNextCursor(resp.NextCursor)
+
+	// Empty page during catch-up: save cursor so page resets to 1.
+	// Without this, the poller re-fetches the same empty page forever.
+	if len(resp.Issues) == 0 {
+		if err := p.syncRepo.Save(ctx, tenant.RepositoryID, nil, nextCursor); err != nil {
+			return fmt.Errorf("%w: %w", ErrSave, err)
+		}
+
+		p.logger.InfoContext(ctx, "no new issues, cursor advanced")
+		p.adaptPollingInterval(ctx)
 
 		return nil
 	}
 
-	p.logger.InfoContext(ctx, "fetched", slog.Int("count", len(resp.Issues)))
-
-	if err := p.issueRepo.UpsertMany(ctx, tenant.RepositoryID, resp.Issues); err != nil {
-		return fmt.Errorf("%w: %w", ErrStoreIssues, err)
+	if err := p.syncRepo.Save(ctx, tenant.RepositoryID, resp.Issues, nextCursor); err != nil {
+		return fmt.Errorf("%w: %w", ErrSave, err)
 	}
 
-	if err := p.saveCursor(ctx, tenant.RepositoryID, resp.NextCursor); err != nil {
-		return fmt.Errorf("%w: %w", ErrSaveCursor, err)
-	}
-
-	p.logger.InfoContext(ctx, "stored", slog.Int("count", len(resp.Issues)))
+	p.logger.InfoContext(ctx, "synced", slog.Int("count", len(resp.Issues)))
 
 	return nil
 }
 
-func (p *IssuePoller) buildRequest(tenant tenants.RepositoryTenant, cursor entities.SyncCursor) githubinfra.Request {
+func (p *IssuePoller) buildRequest(tenant tenants.RepositoryTenant, cursor entities.Cursor) githubinfra.Request {
 	req := githubinfra.Request{
 		Owner:      tenant.Owner,
 		Repository: tenant.Name,
 		Cursor: githubinfra.Cursor{
 			Limit: 50,
-			Page:  cursor.NextPage,
-			Since: cursor.SinceUpdatedAt,
+			Page:  cursor.Page,
+			Since: cursor.Since,
 		},
 	}
 
 	// ETag only in steady-state (page 1). During catch-up ETag is invalid for other pages.
-	isCatchUp := cursor.NextPage > 1
+	isCatchUp := cursor.Page > 1
 	if !isCatchUp {
 		req.Cursor.ETag = cursor.ETag
 	}
@@ -148,47 +126,15 @@ func (p *IssuePoller) buildRequest(tenant tenants.RepositoryTenant, cursor entit
 	return req
 }
 
-func (p *IssuePoller) saveCursor(ctx context.Context, repositoryID int64, next githubinfra.Cursor) error {
-	return p.cursorRepo.Save(ctx, entities.SyncCursor{
-		RepositoryID:   repositoryID,
-		ResourceType:   string(resources.Issue),
-		SinceUpdatedAt: next.Since,
-		NextPage:       next.Page,
-		ETag:           next.ETag,
-	})
-}
-
-// findCursor loads the sync cursor from the database.
-// Returns a zero-value SyncCursor when no cursor exists yet (first run).
-func (p *IssuePoller) findCursor(ctx context.Context, repositoryID int64) (entities.SyncCursor, error) {
-	cursor, err := p.cursorRepo.Find(ctx, repositoryID, resources.Issue)
-	if err != nil {
-		if dal.IsNotFound(err) {
-			p.logger.DebugContext(ctx, "cursor not found, starting from scratch",
-				slog.Int64("repositoryId", repositoryID),
-			)
-
-			return entities.SyncCursor{}, nil
-		}
-
-		return entities.SyncCursor{}, err
+// buildNextCursor converts a github infrastructure Cursor into a domain Cursor.
+func (p *IssuePoller) buildNextCursor(next githubinfra.Cursor) entities.Cursor {
+	return entities.Cursor{
+		Since: next.Since,
+		Page:  next.Page,
+		ETag:  next.ETag,
 	}
-
-	p.logger.DebugContext(ctx, "cursor found",
-		slog.Int64("repositoryId", repositoryID),
-		slog.Time("since", cursor.SinceUpdatedAt),
-		slog.Int("nextPage", cursor.NextPage),
-		slog.String("etag", cursor.ETag),
-	)
-
-	return cursor, nil
 }
 
-// adaptPollingInterval adjusts the polling frequency based on data availability.
-// Called when a successful fetch returns zero issues, indicating a quiet period.
-// Reduces GitHub API load by increasing the interval between polls.
-//
-// noop for now
 func (p *IssuePoller) adaptPollingInterval(_ context.Context) {
 	//nolint:godox // noop: will be implemented when adaptive polling is prioritized in https://github.com/thumbrise/autosolve/issues/53
 	// TODO: implement exponential backoff on empty responses, reset to base interval when data appears.

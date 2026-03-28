@@ -12,22 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package github
-
-import "time"
-
-// Cursor carries pagination and conditional-request state for a single API call.
-// Built by the domain layer from entities.Offset; interpreted by Client.
-type Cursor struct {
-	ETag  string
-	Limit int
-	Page  int
-	Since time.Time
-}
-
-// Request identifies the repository and cursor for a GitHub API call.
-type Request struct {
-	Owner      string
-	Repository string
-	Cursor     Cursor
-}
+// Package eventbus will contain broker/topic contracts.
+// Placeholder — real contracts arrive with the broker+relay+consumer PR.
+package eventbus
