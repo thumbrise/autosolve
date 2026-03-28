@@ -16,14 +16,21 @@ package logger
 
 import (
 	"context"
+	"fmt"
+	"io"
 	"log/slog"
 	"os"
+	"path/filepath"
 
 	"github.com/m-mizutani/masq"
+	slogmulti "github.com/samber/slog-multi"
+	"gopkg.in/natefinch/lumberjack.v2"
 
 	"github.com/thumbrise/autosolve/internal/config"
 	stringsutil "github.com/thumbrise/autosolve/pkg/strings"
 )
+
+const logPath = "runtime/logs/autosolve.log"
 
 // maskReplacer masks the first `percent` percent of the string's runes
 // with the given symbol, leaving the rest visible.
@@ -65,14 +72,54 @@ func WithConfig(ctx context.Context, cfg config.Log) *slog.Logger {
 
 	opts.AddSource = cfg.Source
 
-	textHandler := slog.NewTextHandler(os.Stdout, opts)
-	spanContextHandler := NewSpanContextHandler(textHandler)
+	handlers := make([]slog.Handler, 0, 2)
 
-	l := slog.New(spanContextHandler)
+	fileHandler := slog.NewTextHandler(newFileWriter(logPath), opts)
+	handlers = append(handlers, fileHandler)
+
+	if cfg.Terminal {
+		terminalHandler := slog.NewTextHandler(os.Stderr, opts)
+		handlers = append(handlers, terminalHandler)
+	}
+
+	for i, handler := range handlers {
+		handlers[i] = NewSpanContextHandler(handler)
+	}
+
+	h := slogmulti.Fanout(handlers...)
+
+	l := slog.New(h)
 
 	l.DebugContext(ctx, "logger loaded",
 		slog.Any("cfg", cfg),
 	)
 
 	return l
+}
+
+func newFileWriter(output string) io.Writer {
+	if output == "stdout" {
+		return os.Stdout
+	}
+
+	path := output
+	if path == "" {
+		path = logPath
+	}
+
+	dir := filepath.Dir(path)
+	if err := os.MkdirAll(dir, 0o750); err != nil {
+		// Can't create dir — fall back to stdout and hope someone notices.
+		_, _ = fmt.Fprintf(os.Stderr, "autosolve: cannot create log dir %s: %v, falling back to stdout\n", dir, err)
+
+		return os.Stdout
+	}
+
+	return &lumberjack.Logger{
+		Filename:   path,
+		MaxSize:    10, // MB
+		MaxBackups: 3,
+		MaxAge:     28, // days
+		Compress:   true,
+	}
 }

@@ -1,6 +1,7 @@
 log:
   debug: true
   source: false
+  terminal: false
 
 database:
   sqlitePath: runtime/database/sqlite.db
