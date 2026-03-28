@@ -54,14 +54,15 @@ func (q *Queries) InsertOutboxEvent(ctx context.Context, db DBTX, arg InsertOutb
 const pendingOutboxEvents = `-- name: PendingOutboxEvents :many
 SELECT id, created_at, topic, resource_id, repository_id
 FROM outbox_events
-WHERE topic = ? AND processed_at IS NULL
+WHERE topic = ? AND repository_id = ? AND processed_at IS NULL
 ORDER BY created_at ASC
 LIMIT ?
 `
 
 type PendingOutboxEventsParams struct {
-	Topic string
-	Limit int64
+	Topic        string
+	RepositoryID int64
+	Limit        int64
 }
 
 type PendingOutboxEventsRow struct {
@@ -73,7 +74,7 @@ type PendingOutboxEventsRow struct {
 }
 
 func (q *Queries) PendingOutboxEvents(ctx context.Context, db DBTX, arg PendingOutboxEventsParams) ([]PendingOutboxEventsRow, error) {
-	rows, err := db.QueryContext(ctx, pendingOutboxEvents, arg.Topic, arg.Limit)
+	rows, err := db.QueryContext(ctx, pendingOutboxEvents, arg.Topic, arg.RepositoryID, arg.Limit)
 	if err != nil {
 		return nil, err
 	}
@@ -81,6 +82,56 @@ func (q *Queries) PendingOutboxEvents(ctx context.Context, db DBTX, arg PendingO
 	items := []PendingOutboxEventsRow{}
 	for rows.Next() {
 		var i PendingOutboxEventsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.CreatedAt,
+			&i.Topic,
+			&i.ResourceID,
+			&i.RepositoryID,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const pendingOutboxEventsAll = `-- name: PendingOutboxEventsAll :many
+SELECT id, created_at, topic, resource_id, repository_id
+FROM outbox_events
+WHERE topic = ? AND processed_at IS NULL
+ORDER BY created_at ASC
+LIMIT ?
+`
+
+type PendingOutboxEventsAllParams struct {
+	Topic string
+	Limit int64
+}
+
+type PendingOutboxEventsAllRow struct {
+	ID           int64
+	CreatedAt    time.Time
+	Topic        string
+	ResourceID   int64
+	RepositoryID int64
+}
+
+func (q *Queries) PendingOutboxEventsAll(ctx context.Context, db DBTX, arg PendingOutboxEventsAllParams) ([]PendingOutboxEventsAllRow, error) {
+	rows, err := db.QueryContext(ctx, pendingOutboxEventsAll, arg.Topic, arg.Limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []PendingOutboxEventsAllRow{}
+	for rows.Next() {
+		var i PendingOutboxEventsAllRow
 		if err := rows.Scan(
 			&i.ID,
 			&i.CreatedAt,

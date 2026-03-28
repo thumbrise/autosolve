@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"time"
 
 	"github.com/thumbrise/autosolve/internal/config"
 )
@@ -35,8 +36,16 @@ type Client struct {
 	httpClient *http.Client
 }
 
+// DefaultTimeout is the default HTTP timeout for Ollama requests.
+const DefaultTimeout = 2 * time.Minute
+
 func NewClient(cfg *config.Ollama) *Client {
-	return &Client{cfg: cfg, httpClient: &http.Client{}}
+	return &Client{
+		cfg: cfg,
+		httpClient: &http.Client{
+			Timeout: DefaultTimeout,
+		},
+	}
 }
 
 type generateRequest struct {
