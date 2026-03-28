@@ -25,25 +25,25 @@ import (
 )
 
 const getSyncCursor = `-- name: GetSyncCursor :one
-SELECT id, created_at, updated_at, repository_id, resource_type, since_updated_at, next_page, e_tag
+SELECT id, created_at, updated_at, repository_id, topic, since_updated_at, next_page, e_tag
 FROM sync_cursors
-WHERE repository_id = ? AND resource_type = ?
+WHERE repository_id = ? AND topic = ?
 `
 
 type GetSyncCursorParams struct {
 	RepositoryID int64
-	ResourceType string
+	Topic        string
 }
 
 func (q *Queries) GetSyncCursor(ctx context.Context, db DBTX, arg GetSyncCursorParams) (SyncCursor, error) {
-	row := db.QueryRowContext(ctx, getSyncCursor, arg.RepositoryID, arg.ResourceType)
+	row := db.QueryRowContext(ctx, getSyncCursor, arg.RepositoryID, arg.Topic)
 	var i SyncCursor
 	err := row.Scan(
 		&i.ID,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.RepositoryID,
-		&i.ResourceType,
+		&i.Topic,
 		&i.SinceUpdatedAt,
 		&i.NextPage,
 		&i.ETag,
@@ -52,9 +52,9 @@ func (q *Queries) GetSyncCursor(ctx context.Context, db DBTX, arg GetSyncCursorP
 }
 
 const upsertSyncCursor = `-- name: UpsertSyncCursor :exec
-INSERT INTO sync_cursors (repository_id, resource_type, since_updated_at, next_page, e_tag, created_at, updated_at)
+INSERT INTO sync_cursors (repository_id, topic, since_updated_at, next_page, e_tag, created_at, updated_at)
 VALUES (?, ?, ?, ?, ?, datetime('now'), datetime('now'))
-ON CONFLICT (repository_id, resource_type)
+ON CONFLICT (repository_id, topic)
 DO UPDATE SET since_updated_at = excluded.since_updated_at,
               next_page        = excluded.next_page,
               e_tag            = excluded.e_tag,
@@ -63,7 +63,7 @@ DO UPDATE SET since_updated_at = excluded.since_updated_at,
 
 type UpsertSyncCursorParams struct {
 	RepositoryID   int64
-	ResourceType   string
+	Topic          string
 	SinceUpdatedAt time.Time
 	NextPage       int64
 	ETag           string
@@ -72,7 +72,7 @@ type UpsertSyncCursorParams struct {
 func (q *Queries) UpsertSyncCursor(ctx context.Context, db DBTX, arg UpsertSyncCursorParams) error {
 	_, err := db.ExecContext(ctx, upsertSyncCursor,
 		arg.RepositoryID,
-		arg.ResourceType,
+		arg.Topic,
 		arg.SinceUpdatedAt,
 		arg.NextPage,
 		arg.ETag,

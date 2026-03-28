@@ -76,6 +76,15 @@ type Label struct {
 	Description  *string
 }
 
+type OutboxEvent struct {
+	ID           int64
+	CreatedAt    time.Time
+	Topic        string
+	ResourceID   int64
+	RepositoryID int64
+	ProcessedAt  *time.Time
+}
+
 type Repository struct {
 	ID        int64
 	CreatedAt *time.Time
@@ -91,7 +100,7 @@ type SyncCursor struct {
 	CreatedAt      *time.Time
 	UpdatedAt      *time.Time
 	RepositoryID   int64
-	ResourceType   string
+	Topic          string
 	SinceUpdatedAt time.Time
 	NextPage       int64
 	ETag           string

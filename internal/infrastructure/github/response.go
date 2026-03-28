@@ -23,7 +23,7 @@ type Response struct {
 	Issues []*entities.Issue
 
 	// NextCursor is the recommended cursor for the next request.
-	// The domain layer persists it as SyncCursor.
+	// The domain layer converts it to entities.Offset and persists via the topic.
 	NextCursor Cursor
 
 	// NotModified is true when the server returned 304 (ETag matched).

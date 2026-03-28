@@ -16,11 +16,10 @@ package entities
 
 import "time"
 
-type SyncCursor struct {
-	Record
-	RepositoryID   int64
-	ResourceType   string
-	SinceUpdatedAt time.Time
-	NextPage       int
-	ETag           string
+// Cursor tracks polling progress for a repository resource.
+// Used by pollers to resume fetching from where they left off.
+type Cursor struct {
+	Since time.Time
+	Page  int
+	ETag  string
 }

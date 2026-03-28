@@ -50,7 +50,8 @@ var Bindings = wire.NewSet(
 	preflights.NewRepositoryValidator,
 	workers.NewIssuePoller,
 
-	repositories.NewIssueRepository,
+	repositories.NewIssueSyncer,
+	wire.Bind(new(workers.IssueSyncRepo), new(*repositories.IssueSyncer)),
+
 	repositories.NewRepositoryRepository,
-	repositories.NewSyncCursorRepository,
 )
