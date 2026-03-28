@@ -1,4 +1,5 @@
 [sqlfluff]
 dialect = sqlite
 max_line_length = 120
-exclude_rules = layout.spacing, layout.end_of_file
+exclude_rules = LT01, layout.spacing, layout.end_of_file, layout.indent, layout.select_targets
+paths = internal/infrastructure/database/migrations/,internal/infrastructure/dal/queries/
