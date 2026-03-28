@@ -175,6 +175,7 @@ func (m *Migrator) Fresh(ctx context.Context) ([]*goose.MigrationResult, []*goos
 	if err := os.Remove(m.dbPath); err != nil && !os.IsNotExist(err) {
 		return nil, nil, fmt.Errorf("%w: remove db file: %w", ErrMigrationFailed, err)
 	}
+
 	for _, suffix := range []string{"-wal", "-shm"} {
 		_ = os.Remove(m.dbPath + suffix)
 	}
