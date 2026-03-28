@@ -14,6 +14,7 @@ We didn't keep a devlog from day one (regret). These entries are reconstructed f
 - [#4 — From God Table to sqlc](/devlog/004-god-table-to-sqlc) — GORM → goose → sqlc, and why each step happened
 - [#5 — Two-Phase Scheduler](/devlog/005-two-phase-scheduler) — preflights, multi-repo, and the Planner pattern
 - [#6 — How I Over-Engineered an Event Bus](/devlog/006-over-engineered-event-bus) — generic contracts, God Objects, and the courage to delete
+- [#7 — Why I Built a Dev Dashboard Instead of Writing Tests](/devlog/007-dx-inner-loop) — DX, inner loop, and the throwaway tools that teach you more than tests
 
 ---
 
