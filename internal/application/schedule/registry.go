@@ -12,11 +12,24 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package application
+package schedule
 
 import (
+	"github.com/google/wire"
+
 	"github.com/thumbrise/autosolve/internal/domain/spec/preflights"
 	"github.com/thumbrise/autosolve/internal/domain/spec/workers"
+)
+
+var Bindings = wire.NewSet(
+	NewScheduler,
+	NewPlanner,
+	NewPreflights,
+	NewWorkers,
+
+	preflights.NewRepositoryValidator,
+	workers.NewIssuePoller,
+	workers.NewIssueExplainer,
 )
 
 // NewPreflights registers all preflight tasks.
@@ -33,8 +46,10 @@ func NewPreflights(
 // Add new workers here when extending the system.
 func NewWorkers(
 	issueParser *workers.IssuePoller,
+	issueExplainer *workers.IssueExplainer,
 ) []Worker {
 	return []Worker{
 		issueParser,
+		issueExplainer,
 	}
 }

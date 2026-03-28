@@ -25,3 +25,13 @@ FROM issues
 WHERE repository_id = ?
 ORDER BY github_updated_at DESC
 LIMIT 1;
+
+-- name: GetIssueByRepoAndNumber :one
+SELECT number, title, body, state
+FROM issues
+WHERE repository_id = ? AND number = ?;
+
+-- name: ListIssues :many
+SELECT id, repository_id, number, title, state
+FROM issues
+ORDER BY number DESC;

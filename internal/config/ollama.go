@@ -12,26 +12,19 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package cmds
+package config
 
 import (
-	"github.com/spf13/cobra"
+	"context"
 
-	"github.com/thumbrise/autosolve/internal/application/schedule"
+	"github.com/thumbrise/autosolve/internal/infrastructure/config"
 )
 
-type Schedule struct {
-	*cobra.Command
+type Ollama struct {
+	Endpoint string `validate:"required"`
+	Model    string `validate:"required"`
 }
 
-func NewSchedule(scheduler *schedule.Scheduler) *Schedule {
-	c := &cobra.Command{
-		Use:   "schedule",
-		Short: "Poll github and dispatch AI tools",
-		RunE: func(cmd *cobra.Command, args []string) error {
-			return scheduler.Run(cmd.Context())
-		},
-	}
-
-	return &Schedule{c}
+func NewOllama(ctx context.Context, reader *config.Reader) (*Ollama, error) {
+	return config.Read[Ollama](ctx, reader)
 }

@@ -24,6 +24,36 @@ import (
 	"time"
 )
 
+const getIssueByRepoAndNumber = `-- name: GetIssueByRepoAndNumber :one
+SELECT number, title, body, state
+FROM issues
+WHERE repository_id = ? AND number = ?
+`
+
+type GetIssueByRepoAndNumberParams struct {
+	RepositoryID int64
+	Number       int64
+}
+
+type GetIssueByRepoAndNumberRow struct {
+	Number int64
+	Title  string
+	Body   string
+	State  string
+}
+
+func (q *Queries) GetIssueByRepoAndNumber(ctx context.Context, db DBTX, arg GetIssueByRepoAndNumberParams) (GetIssueByRepoAndNumberRow, error) {
+	row := db.QueryRowContext(ctx, getIssueByRepoAndNumber, arg.RepositoryID, arg.Number)
+	var i GetIssueByRepoAndNumberRow
+	err := row.Scan(
+		&i.Number,
+		&i.Title,
+		&i.Body,
+		&i.State,
+	)
+	return i, err
+}
+
 const getLastUpdateTime = `-- name: GetLastUpdateTime :one
 SELECT github_id, github_updated_at
 FROM issues
@@ -35,6 +65,43 @@ LIMIT 1
 type GetLastUpdateTimeRow struct {
 	GithubID        int64
 	GithubUpdatedAt time.Time
+}
+
+const listIssues = `-- name: ListIssues :many
+SELECT id, repository_id, number, title, state
+FROM issues
+ORDER BY number DESC
+`
+
+type ListIssuesRow struct {
+	ID           int64
+	RepositoryID int64
+	Number       int64
+	Title        string
+	State        string
+}
+
+func (q *Queries) ListIssues(ctx context.Context, db DBTX) ([]ListIssuesRow, error) {
+	rows, err := db.QueryContext(ctx, listIssues)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListIssuesRow{}
+	for rows.Next() {
+		var i ListIssuesRow
+		if err := rows.Scan(&i.ID, &i.RepositoryID, &i.Number, &i.Title, &i.State); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 func (q *Queries) GetLastUpdateTime(ctx context.Context, db DBTX, repositoryID int64) (GetLastUpdateTimeRow, error) {
