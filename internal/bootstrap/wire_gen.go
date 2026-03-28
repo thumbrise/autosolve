@@ -59,7 +59,7 @@ func InitializeKernel(contextContext context.Context, reader *config.Reader, log
 		return nil, err
 	}
 	ollamaClient := ollama.NewClient(configOllama)
-	issueExplainer := workers.NewIssueExplainer(db, queries, queueQueue, ollamaClient, logger)
+	issueExplainer := workers.NewIssueExplainer(configGithub, db, queries, queueQueue, ollamaClient, client, logger)
 	v3 := schedule.NewGlobalWorkers(issueExplainer)
 	scheduler := schedule.NewScheduler(planner, v3, logger)
 	cmdsSchedule := cmds.NewSchedule(scheduler)

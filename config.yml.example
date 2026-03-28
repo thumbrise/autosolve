@@ -18,6 +18,7 @@ github:
     minInterval: 1s
   issues:
     parseInterval: 5s
+    requiredLabel: "autosolve" # optional — only analyze issues with this label; empty = all issues
 
 ollama:
   endpoint: "http://localhost:11434"

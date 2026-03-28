@@ -8,3 +8,8 @@ RETURNING id;
 SELECT id
 FROM repositories
 WHERE owner = ? AND name = ?;
+
+-- name: GetRepositoryByID :one
+SELECT id, owner, name
+FROM repositories
+WHERE id = ?;
