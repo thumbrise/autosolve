@@ -72,7 +72,7 @@ const (
 	issueExplainPrompt = "Classify this GitHub issue. Suggest priority (critical/high/medium/low) and component."
 
 	// autosolveMarker is an HTML comment embedded in every bot-posted comment.
-	// Used to detect feedback loops: if the last comment on an issue contains this
+	// Used to detect feedback loops: if any comment on an issue contains this
 	// marker, the explainer skips processing to avoid infinite re-triggering.
 	autosolveMarker = "<!-- autosolve -->"
 )
