@@ -58,6 +58,11 @@ type generateResponse struct {
 	Response string `json:"response"`
 }
 
+// Model returns the configured model name.
+func (c *Client) Model() string {
+	return c.cfg.Model
+}
+
 // Generate sends a prompt to Ollama and returns the full response text.
 func (c *Client) Generate(ctx context.Context, prompt string) (string, error) {
 	body, err := json.Marshal(generateRequest{

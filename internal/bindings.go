@@ -51,4 +51,5 @@ var Bindings = wire.NewSet(
 	wire.Bind(new(workers.IssueSyncRepo), new(*repositories.IssueSyncer)),
 
 	repositories.NewRepositoryRepository,
+	repositories.NewJobRepository,
 )

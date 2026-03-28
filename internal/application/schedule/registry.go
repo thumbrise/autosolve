@@ -29,7 +29,7 @@ var Bindings = wire.NewSet(
 
 	preflights.NewRepositoryValidator,
 	workers.NewIssuePoller,
-	workers.NewIssueExplainer,
+	workers.NewOutboxRelay,
 )
 
 // NewPreflights registers all preflight tasks.
@@ -45,11 +45,11 @@ func NewPreflights(
 // NewWorkers registers all worker tasks.
 // Add new workers here when extending the system.
 func NewWorkers(
-	issueParser *workers.IssuePoller,
-	issueExplainer *workers.IssueExplainer,
+	issuePoller *workers.IssuePoller,
+	outboxRelay *workers.OutboxRelay,
 ) []Worker {
 	return []Worker{
-		issueParser,
-		issueExplainer,
+		issuePoller,
+		outboxRelay,
 	}
 }

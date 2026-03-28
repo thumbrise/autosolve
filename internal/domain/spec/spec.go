@@ -35,7 +35,7 @@ type PreflightSpec struct {
 	Work     func(ctx context.Context, tenant tenants.RepositoryTenant) error
 }
 
-// WorkerSpec describes a long-running interval task.
+// WorkerSpec describes a long-running interval task scoped to a repository tenant.
 // Defined by domain, consumed by Planner.
 //
 // Domain is a horse with blinders — it declares work, not retry strategy.
@@ -49,4 +49,20 @@ type WorkerSpec struct {
 	Resource string
 	Interval time.Duration
 	Work     func(ctx context.Context, tenant tenants.RepositoryTenant) error
+}
+
+// GlobalWorkerSpec describes a long-running interval task that runs once globally,
+// without per-repository multiplication. Used for jobs that read from shared queues.
+// Defined by domain, consumed by Planner.
+//
+// Domain is a horse with blinders — it declares work, not retry strategy.
+// Retry is handled by Runner's Baseline (configured by Scheduler).
+//
+// Task naming convention: worker:{Resource}
+// Examples:
+//   - worker:job-processor
+type GlobalWorkerSpec struct {
+	Resource string
+	Interval time.Duration
+	Work     func(ctx context.Context) error
 }

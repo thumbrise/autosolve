@@ -25,7 +25,7 @@ import (
 )
 
 const getIssueByRepoAndNumber = `-- name: GetIssueByRepoAndNumber :one
-SELECT number, title, body, state
+SELECT id, number, title, body, state
 FROM issues
 WHERE repository_id = ? AND number = ?
 `
@@ -36,6 +36,7 @@ type GetIssueByRepoAndNumberParams struct {
 }
 
 type GetIssueByRepoAndNumberRow struct {
+	ID     int64
 	Number int64
 	Title  string
 	Body   string
@@ -46,6 +47,7 @@ func (q *Queries) GetIssueByRepoAndNumber(ctx context.Context, db DBTX, arg GetI
 	row := db.QueryRowContext(ctx, getIssueByRepoAndNumber, arg.RepositoryID, arg.Number)
 	var i GetIssueByRepoAndNumberRow
 	err := row.Scan(
+		&i.ID,
 		&i.Number,
 		&i.Title,
 		&i.Body,

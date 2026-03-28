@@ -49,13 +49,9 @@ func InitializeKernel(contextContext context.Context, reader *config.Reader, log
 	v := schedule.NewPreflights(repositoryValidator)
 	issueSyncer := repositories.NewIssueSyncer(db, queries, logger)
 	issuePoller := workers.NewIssuePoller(configGithub, client, logger, issueSyncer)
-	configOllama, err := config2.NewOllama(contextContext, reader)
-	if err != nil {
-		return nil, err
-	}
-	ollamaClient := ollama.NewClient(configOllama)
-	issueExplainer := workers.NewIssueExplainer(db, queries, ollamaClient, logger)
-	v2 := schedule.NewWorkers(issuePoller, issueExplainer)
+	jobRepository := repositories.NewJobRepository(db, queries, logger)
+	outboxRelay := workers.NewOutboxRelay(db, queries, jobRepository, logger)
+	v2 := schedule.NewWorkers(issuePoller, outboxRelay)
 	planner := schedule.NewPlanner(configGithub, v, v2, repositoryRepository)
 	scheduler := schedule.NewScheduler(planner, logger)
 	cmdsSchedule := cmds.NewSchedule(scheduler)
@@ -74,6 +70,11 @@ func InitializeKernel(contextContext context.Context, reader *config.Reader, log
 	testSubTree := cmds.NewTestSubTree(logger)
 	outbox := cmds.NewOutbox()
 	outboxReplay := cmds.NewOutboxReplay(db, logger)
+	configOllama, err := config2.NewOllama(contextContext, reader)
+	if err != nil {
+		return nil, err
+	}
+	ollamaClient := ollama.NewClient(configOllama)
 	dev := cmds.NewDev(db, queries, ollamaClient, logger)
 	v3 := cmd.NewCommands(cmdsSchedule, migrate, migrateUp, migrateUpFresh, migrateDown, migrateStatus, migrateCreate, migrateRedo, test, testSubTree, outbox, outboxReplay, dev)
 	root := cmd.NewRoot()

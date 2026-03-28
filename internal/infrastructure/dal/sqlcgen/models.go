@@ -65,6 +65,21 @@ type IssueLabel struct {
 	LabelID int64
 }
 
+type Job struct {
+	ID           int64
+	CreatedAt    time.Time
+	UpdatedAt    time.Time
+	RepositoryID int64
+	IssueID      int64
+	Type         string
+	Status       string
+	Prompt       string
+	Model        *string
+	Result       *string
+	Attempts     int64
+	LastError    *string
+}
+
 type Label struct {
 	ID           int64
 	CreatedAt    *time.Time
