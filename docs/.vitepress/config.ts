@@ -66,6 +66,7 @@ export default defineConfig({
             {text: '#5 — Two-Phase Scheduler', link: '/devlog/005-two-phase-scheduler'},
             {text: '#6 — Over-Engineered Event Bus', link: '/devlog/006-over-engineered-event-bus'},
             {text: '#7 — DX & Inner Loop', link: '/devlog/007-dx-inner-loop'},
+            {text: '#8 — goqite over hand-rolled jobs', link: '/devlog/008-goqite-over-hand-rolled-jobs'},
           ],
         },
       ],
