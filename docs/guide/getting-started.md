@@ -58,6 +58,8 @@ If any preflight fails, workers never start. This is by design — see [Two-Phas
 | `migrate down <N\|*>` | Roll back |
 | `migrate status` | Show migration state |
 | `migrate create <name>` | New migration file |
+| `jobs list` | Show all pending messages in the queue |
+| `jobs show <id>` | Show one message with full payload |
 
 ## Next
 
