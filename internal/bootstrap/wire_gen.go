@@ -78,8 +78,11 @@ func InitializeKernel(contextContext context.Context, reader *config.Reader, log
 	testSubTree := cmds.NewTestSubTree(logger)
 	outbox := cmds.NewOutbox()
 	outboxReplay := cmds.NewOutboxReplay(db, logger)
+	jobs := cmds.NewJobs()
+	jobsList := cmds.NewJobsList(db)
+	jobsShow := cmds.NewJobsShow(db)
 	dev := cmds.NewDev(db, queries, ollamaClient, logger)
-	v4 := cmd.NewCommands(cmdsSchedule, migrate, migrateUp, migrateUpFresh, migrateDown, migrateStatus, migrateCreate, migrateRedo, test, testSubTree, outbox, outboxReplay, dev)
+	v4 := cmd.NewCommands(cmdsSchedule, migrate, migrateUp, migrateUpFresh, migrateDown, migrateStatus, migrateCreate, migrateRedo, test, testSubTree, outbox, outboxReplay, jobs, jobsList, jobsShow, dev)
 	root := cmd.NewRoot()
 	kernel := NewKernel(v4, db, logger, root)
 	return kernel, nil

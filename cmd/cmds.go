@@ -36,6 +36,9 @@ var Bindings = wire.NewSet(
 	cmds.NewTestSubTree,
 	cmds.NewOutbox,
 	cmds.NewOutboxReplay,
+	cmds.NewJobs,
+	cmds.NewJobsList,
+	cmds.NewJobsShow,
 	cmds.NewDev,
 )
 
@@ -82,6 +85,9 @@ func NewCommands(
 	testSubTree *cmds.TestSubTree,
 	outboxCMD *cmds.Outbox,
 	outboxReplay *cmds.OutboxReplay,
+	jobsCMD *cmds.Jobs,
+	jobsList *cmds.JobsList,
+	jobsShow *cmds.JobsShow,
 	devCMD *cmds.Dev,
 ) []*cobra.Command {
 	migrateCMD.AddCommand(
@@ -97,11 +103,14 @@ func NewCommands(
 
 	outboxCMD.AddCommand(outboxReplay.Command)
 
+	jobsCMD.AddCommand(jobsList.Command, jobsShow.Command)
+
 	return []*cobra.Command{
 		scheduleCMD.Command,
 		migrateCMD.Command,
 		testCMD.Command,
 		outboxCMD.Command,
+		jobsCMD.Command,
 		devCMD.Command,
 	}
 }
