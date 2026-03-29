@@ -1,3 +1,8 @@
+---
+title: autosolve longrun Package
+description: Standalone Go package for long-running tasks with per-error retry, exponential backoff, degraded mode, and built-in OpenTelemetry spans.
+---
+
 # longrun Package
 
 `pkg/longrun` is a self-contained Go package for long-running tasks. Zero internal dependencies beyond `golang.org/x/sync`. Designed for extraction into a standalone module once the API stabilizes.

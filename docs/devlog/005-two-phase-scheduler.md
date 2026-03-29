@@ -1,3 +1,8 @@
+---
+title: "autosolve Devlog #5 — Two-Phase Scheduler"
+description: The commit that rewired autosolve from single-repo to multi-repo — Planner, Scheduler, Registry, RepoTenant, and the rate limiter RoundTripper.
+---
+
 # #5 — Two-Phase Scheduler
 
 > From "one repo, one worker" to "N repos, M tasks, two phases." The commit that changed everything.

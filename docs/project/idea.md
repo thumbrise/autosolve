@@ -1,3 +1,8 @@
+---
+title: The Idea Behind autosolve
+description: Why autosolve exists — AI dev tools are powerful but integrating them with GitHub is painful. A self-hosted daemon that polls, detects, dispatches, and reports.
+---
+
 # The Idea
 
 ::: tip TL;DR

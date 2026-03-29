@@ -1,3 +1,8 @@
+---
+title: "autosolve Devlog #7 — DX & Inner Loop"
+description: Why we built a throwaway dev dashboard instead of writing tests — shortening the inner loop to feel the AI pipeline working in real time.
+---
+
 # #7 — Why I Built a Dev Dashboard Instead of Writing Tests
 
 > You can have the cleanest architecture in the world. If you can't *feel* it working, you'll never trust it.

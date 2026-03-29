@@ -1,3 +1,8 @@
+---
+title: Getting Started with autosolve
+description: Install and run autosolve in minutes — clone the repo, configure your GitHub token, migrate the database, and start the polling daemon.
+---
+
 # Getting Started
 
 ::: warning Project Status

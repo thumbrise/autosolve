@@ -1,3 +1,8 @@
+---
+title: autosolve Two-Phase Scheduler
+description: How autosolve runs preflights before workers — validate GitHub access first, then start polling. Fail fast, fail safe execution model.
+---
+
 # Two-Phase Scheduler
 
 The scheduler runs tasks in two sequential phases. This is the core execution model of autosolve.

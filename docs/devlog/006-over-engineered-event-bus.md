@@ -1,3 +1,8 @@
+---
+title: "autosolve Devlog #6 — Over-Engineered Event Bus"
+description: How a generic Topic interface with three type parameters became a God Object — and why we rolled back to a two-method IssueSyncRepo interface.
+---
+
 # #6 — How I Over-Engineered an Event Bus and Rolled Back
 > From generic `Topic[TTopic, TEvent, TOffset]` to a simple `Save + Cursor` interface. The commit that almost wasn't.
 ## The Trigger

@@ -1,3 +1,8 @@
+---
+title: "autosolve Devlog #4 — From God Table to sqlc"
+description: Three database migrations in one project — GORM auto-migrate to goose versioned migrations to sqlc type-safe codegen. Each step fixed a real problem.
+---
+
 # #4 — From God Table to sqlc
 
 > Three database migrations in one project. GORM → goose → sqlc. Each step fixed a real problem.

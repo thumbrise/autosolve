@@ -1,3 +1,8 @@
+---
+title: autosolve Status & Roadmap
+description: Current project status, what works today, the v1 architecture epic, tech stack, and planned features for the autosolve GitHub automation daemon.
+---
+
 # Status & Roadmap
 
 ::: warning Active Development

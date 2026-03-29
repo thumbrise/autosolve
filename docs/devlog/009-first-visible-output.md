@@ -1,3 +1,8 @@
+---
+title: "autosolve Devlog #9 — The First Visible Output"
+description: The first AI comment on a real GitHub issue — solving the infinite feedback loop with HTML markers, choosing PAT over GitHub App, and adding a label gate.
+---
+
 # #9 — The First Visible Output
 
 > Eight PRs of infrastructure. One comment on a GitHub issue. That's the whole story.

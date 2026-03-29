@@ -1,3 +1,8 @@
+---
+title: autosolve Observability & OpenTelemetry
+description: Enable OpenTelemetry in autosolve to get traces, metrics, and correlated logs via OTLP/gRPC — works with Grafana, Jaeger, and any OTEL backend.
+---
+
 # Observability
 
 autosolve has OpenTelemetry baked in at every level. Disabled by default — zero overhead until you need it.

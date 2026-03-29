@@ -1,3 +1,8 @@
+---
+title: autosolve Configuration Reference
+description: Complete config.yml reference for autosolve — GitHub tokens, multi-repo setup, rate limiting, OpenTelemetry, and environment variable overrides.
+---
+
 # Configuration
 
 autosolve uses a single `config.yml` file. Every field can be overridden via environment variables with the `AUTOSOLVE_` prefix (e.g. `github.token` → `AUTOSOLVE_GITHUB_TOKEN`).

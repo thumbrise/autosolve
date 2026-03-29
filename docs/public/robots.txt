@@ -1,0 +1,3 @@
+User-agent: *
+Allow: /
+Sitemap: https://thumbrise.github.io/autosolve/sitemap.xml

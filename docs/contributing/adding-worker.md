@@ -1,3 +1,8 @@
+---
+title: Adding a Worker to autosolve
+description: Step-by-step guide to adding a new polling worker in autosolve — create a domain spec, register in DI, run codegen, and let the Planner handle the rest.
+---
+
 # Adding a Worker
 
 This is the most common way to extend autosolve. A worker is a long-running interval task that does something for each configured repository.
