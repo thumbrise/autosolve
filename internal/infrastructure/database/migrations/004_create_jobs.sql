@@ -1,4 +1,6 @@
 -- +goose Up
+-- Schema corresponds to goqite v0.4.0 (maragu.dev/goqite).
+-- If upgrading goqite, check whether the expected table schema has changed.
 
 CREATE TABLE IF NOT EXISTS goqite
 (

@@ -69,6 +69,7 @@ func NewJobsShow(db *sql.DB) *JobsShow {
 			} else {
 				pretty = body
 			}
+
 			if err != nil {
 				return fmt.Errorf("json marshal: %w", err)
 			}
