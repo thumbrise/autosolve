@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"log/slog"
 	"slices"
+	"strings"
 	"time"
 
 	"go.opentelemetry.io/otel"
@@ -56,6 +57,10 @@ var (
 
 	// metricOllamaDuration records Ollama call latency in seconds.
 	metricOllamaDuration, _ = explainerMeter.Float64Histogram("explainer.ollama.duration_seconds")
+
+	// metricJobsSkipped counts jobs skipped without processing.
+	// Labels: type (job type), reason ("missing_label", "already_responded").
+	metricJobsSkipped, _ = explainerMeter.Int64Counter("explainer.jobs.skipped")
 
 	// metricQueueEmpty counts how often the poll finds an empty queue (idle signal).
 	metricQueueEmpty, _ = explainerMeter.Int64Counter("explainer.queue.empty")
@@ -177,7 +182,7 @@ func (e *IssueExplainer) explainIssue(ctx context.Context, msgID goqite.ID, job 
 		return fmt.Errorf("load repository %d: %w", job.RepositoryID, err)
 	}
 
-	skip, err := e.shouldSkip(ctx, repo, issue, job)
+	skip, reason, err := e.shouldSkip(ctx, repo, issue, job)
 	if err != nil {
 		metricJobsFailed.Add(ctx, 1, typeAttr)
 
@@ -185,6 +190,9 @@ func (e *IssueExplainer) explainIssue(ctx context.Context, msgID goqite.ID, job 
 	}
 
 	if skip {
+		metricJobsSkipped.Add(ctx, 1, typeAttr,
+			metric.WithAttributes(attribute.String("reason", reason)))
+
 		return e.queue.Delete(ctx, msgID)
 	}
 
@@ -211,27 +219,30 @@ func (e *IssueExplainer) explainIssue(ctx context.Context, msgID goqite.ID, job 
 
 // shouldSkip returns true when the issue must not be analyzed.
 // Reasons: missing required label, or already responded (marker found in comments).
-func (e *IssueExplainer) shouldSkip(ctx context.Context, repo sqlcgen.GetRepositoryByIDRow, issue sqlcgen.GetIssueByIDRow, job queue.JobMessage) (bool, error) {
+// The second return value is the skip reason for metrics (empty when not skipped).
+func (e *IssueExplainer) shouldSkip(ctx context.Context, repo sqlcgen.GetRepositoryByIDRow, issue sqlcgen.GetIssueByIDRow, job queue.JobMessage) (bool, string, error) {
 	if label := e.cfg.Issues.RequiredLabel; label != "" {
 		labels, err := e.github.GetIssueLabels(ctx, repo.Owner, repo.Name, int(issue.Number))
 		if err != nil {
-			return false, fmt.Errorf("get labels for issue %d: %w", job.IssueID, err)
+			return false, "", fmt.Errorf("get labels for issue %d: %w", job.IssueID, err)
 		}
 
-		if !slices.Contains(labels, label) {
+		if !slices.ContainsFunc(labels, func(l string) bool {
+			return strings.EqualFold(l, label)
+		}) {
 			e.logger.InfoContext(ctx, "skipping issue, missing required label",
 				slog.Int64("issueId", job.IssueID),
 				slog.Int64("issueNumber", issue.Number),
 				slog.String("requiredLabel", label),
 			)
 
-			return true, nil
+			return true, "missing_label", nil
 		}
 	}
 
 	alreadyResponded, err := e.github.HasCommentWithMarker(ctx, repo.Owner, repo.Name, int(issue.Number), autosolveMarker)
 	if err != nil {
-		return false, fmt.Errorf("check marker for issue %d: %w", job.IssueID, err)
+		return false, "", fmt.Errorf("check marker for issue %d: %w", job.IssueID, err)
 	}
 
 	if alreadyResponded {
@@ -240,10 +251,10 @@ func (e *IssueExplainer) shouldSkip(ctx context.Context, repo sqlcgen.GetReposit
 			slog.Int64("issueNumber", issue.Number),
 		)
 
-		return true, nil
+		return true, "already_responded", nil
 	}
 
-	return false, nil
+	return false, "", nil
 }
 
 // analyzeAndPost sends the issue to Ollama and posts the response as a GitHub comment.
