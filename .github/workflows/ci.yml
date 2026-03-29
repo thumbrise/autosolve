@@ -45,6 +45,36 @@ jobs:
       - name: Run lint
         run: task lint:ci
 
+  verify-generate:
+    name: Verify generated code
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      - name: Go mod download
+        run: go mod download
+
+      - name: Install Task
+        uses: go-task/setup-task@v2
+        with:
+          version: ${{ env.TASK_VERSION }}
+
+      - name: Run generate
+        run: task generate
+
+      - name: Check for diff
+        run: |
+          if ! git diff --exit-code || [ -n "$(git status --porcelain)" ]; then
+            echo "::error::Generated code is out of date. Run 'task generate' and commit."
+            exit 1
+          fi
+
   test:
     name: Test source code
     runs-on: ubuntu-latest
