@@ -1,3 +1,8 @@
+---
+title: autosolve Architecture Overview
+description: High-level architecture of autosolve — bootstrap, Wire DI, two-phase scheduler, Planner, longrun Runner, and the directory structure explained.
+---
+
 # Architecture Overview
 
 ## The Big Picture

@@ -1,3 +1,8 @@
+---
+title: autosolve Devlog
+description: Design decisions, dead ends, and lessons learned while building autosolve — a chronological engineering journal from polling to AI dispatch.
+---
+
 # Devlog
 
 Design decisions, dead ends, and lessons learned — in the order they happened.
@@ -18,6 +23,7 @@ Entries #1–#5 were reconstructed from git history after the fact (we didn't ke
 | 6 | [How I Over-Engineered an Event Bus](/devlog/006-over-engineered-event-bus) | NIH / Delete |
 | 7 | [Why I Built a Dev Dashboard Instead of Writing Tests](/devlog/007-dx-inner-loop) | DX |
 | 8 | [goqite over hand-rolled jobs](/devlog/008-goqite-over-hand-rolled-jobs) | NIH / Delete |
+| 9 | [The First Visible Output](/devlog/009-first-visible-output) | Milestone |
 
 ---
 

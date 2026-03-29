@@ -1,3 +1,8 @@
+---
+title: autosolve Error Handling & Retry
+description: Layered error handling in autosolve — TransientRules, Baseline classifier, degraded mode, and per-error exponential backoff explained.
+---
+
 # Error Handling & Retry
 
 autosolve has a layered error handling system. Domain code declares errors, infrastructure classifies them, and `longrun` decides what to do.

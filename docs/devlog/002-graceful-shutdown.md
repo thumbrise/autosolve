@@ -1,3 +1,8 @@
+---
+title: "autosolve Devlog #2 — Graceful Shutdown"
+description: Three shutdown bugs in Go — born-cancelled contexts, deadlocked hooks, and broken grace periods. How autosolve fixed them with context.WithoutCancel.
+---
+
 # #2 — Graceful Shutdown Is Hard
 
 > Three bugs in a row. All about context. All about shutdown. A rite of passage for any Go daemon.

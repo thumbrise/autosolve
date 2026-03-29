@@ -1,3 +1,8 @@
+---
+title: autosolve Ideas & Wishlist
+description: Open list of future ideas for autosolve — plugin system, rule engine for AI dispatch, multi-agent support, adaptive polling, and more.
+---
+
 # Ideas & Wishlist
 
 ::: tip This is an open list

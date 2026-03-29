@@ -5,13 +5,16 @@ export default defineConfig({
   description: 'Self-hosted Go daemon that polls GitHub repos and dispatches AI agents to solve issues. No webhooks, no CI glue.',
   base: '/autosolve/',
   sitemap: {
-    hostname: 'https://thumbrise.github.io/autosolve/',
+    hostname: 'https://thumbrise.github.io/autosolve',
   },
   head: [
-    ['meta', {
-      name: 'keywords',
-      content: 'github issue automation self-hosted, golang long running service retry, golang graceful degraded mode, opentelemetry golang worker metrics'
-    }],
+    ['meta', {property: 'og:type', content: 'website'}],
+    ['meta', {property: 'og:title', content: 'autosolve — AI agents for GitHub issues'}],
+    ['meta', {property: 'og:description', content: 'Self-hosted Go daemon. Polls repos, dispatches AI agents, posts results.'}],
+    ['meta', {property: 'og:url', content: 'https://thumbrise.github.io/autosolve/'}],
+    ['meta', {name: 'twitter:card', content: 'summary'}],
+    ['meta', {name: 'twitter:title', content: 'autosolve — AI agents for GitHub issues'}],
+    ['meta', {name: 'twitter:description', content: 'Self-hosted Go daemon. Polls repos, dispatches AI agents, posts results.'}],
   ],
 
   themeConfig: {

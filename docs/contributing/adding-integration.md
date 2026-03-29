@@ -1,3 +1,8 @@
+---
+title: Adding an Integration to autosolve
+description: Planned architecture for AI executor integrations in autosolve — how to plug in ra-aid, Ollama, or custom scripts once the dispatch layer ships.
+---
+
 # Adding an Integration
 
 ::: warning This page is a preview

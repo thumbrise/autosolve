@@ -1,3 +1,8 @@
+---
+title: "autosolve Devlog #1 — Why Polling"
+description: Why autosolve uses polling instead of webhooks — no public endpoint, crash-safe cursor pattern, deployable anywhere from a laptop to a Raspberry Pi.
+---
+
 # #1 — Why Polling, Not Webhooks
 
 > The first architectural decision. Everything else follows from this.

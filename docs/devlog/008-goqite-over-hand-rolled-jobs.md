@@ -1,3 +1,8 @@
+---
+title: "autosolve Devlog #8 — goqite over Hand-Rolled Jobs"
+description: Why we deleted 500 lines of hand-rolled job lifecycle code and replaced it with goqite — visibility timeout, atomic dequeue, and dead letter for free.
+---
+
 # #8 — Why We Replaced a Hand-Rolled Job Table with goqite
 
 > Three days building a job lifecycle from scratch. One conversation to realize we shouldn't have.

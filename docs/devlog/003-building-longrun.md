@@ -1,3 +1,8 @@
+---
+title: "autosolve Devlog #3 — Building longrun"
+description: Why we built a custom Go task runner with per-error retry budgets — from simple goroutine orchestrator to the longrun package with Baseline and degraded mode.
+---
+
 # #3 — Building longrun
 
 > We needed a task runner. We looked at what exists. We built our own. Here's why.
