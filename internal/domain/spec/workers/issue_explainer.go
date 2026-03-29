@@ -288,6 +288,23 @@ func (e *IssueExplainer) analyzeAndPost(ctx context.Context, repo sqlcgen.GetRep
 
 	commentBody := formatComment(e.ollama.Model(), response)
 
+	// Guard against duplicate comments on message redelivery (#177).
+	// If the process crashed after posting but before queue.Delete,
+	// the marker will already be present — skip posting.
+	alreadyPosted, err := e.github.HasCommentWithMarker(ctx, repo.Owner, repo.Name, int(issue.Number), autosolveMarker)
+	if err != nil {
+		return fmt.Errorf("idempotency check for issue %d: %w", job.IssueID, err)
+	}
+
+	if alreadyPosted {
+		e.logger.WarnContext(ctx, "duplicate suppressed, comment already exists",
+			slog.Int64("issueId", job.IssueID),
+			slog.Int64("issueNumber", issue.Number),
+		)
+
+		return nil
+	}
+
 	if err := e.github.CreateIssueComment(ctx, repo.Owner, repo.Name, int(issue.Number), commentBody); err != nil {
 		return fmt.Errorf("post comment for issue %d: %w", job.IssueID, err)
 	}

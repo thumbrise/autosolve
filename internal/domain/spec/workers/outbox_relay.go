@@ -209,6 +209,11 @@ func (r *OutboxRelay) relayEvent(ctx context.Context, ev sqlcgen.PendingOutboxEv
 		slog.String("issueTitle", issue.Title),
 	)
 
+	// Send and Ack are not wrapped in a transaction because the DB pool has
+	// MaxOpenConns=1 and goqite.Send uses the same *sql.DB internally.
+	// BeginTx would hold the only connection, causing goqite.Send to deadlock.
+	// The idempotency guard in analyzeAndPost (#177) handles the rare case
+	// where Send succeeds but Ack fails on crash — duplicate jobs are harmless.
 	if err := r.queue.Send(ctx, jobType, ev.RepositoryID, issue.ID); err != nil {
 		return fmt.Errorf("enqueue job for issue #%d: %w", ev.ResourceID, err)
 	}
