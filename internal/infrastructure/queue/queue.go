@@ -31,7 +31,7 @@ const (
 
 	// Timeout is how long a message stays invisible after Receive.
 	// If the consumer dies, the message reappears after this duration.
-	Timeout = 60 * time.Second
+	Timeout = 5 * time.Minute
 
 	// MaxReceive is how many times a message can be received before
 	// it becomes a dead message and is no longer delivered.
