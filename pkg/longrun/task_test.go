@@ -333,6 +333,47 @@ func TestOneShotTask_WithDelay_ContextCancelled(t *testing.T) {
 	}
 }
 
+// --- baseline: out-of-range category ---
+
+func TestBaseline_OutOfRangeCategory_NoPanic(t *testing.T) {
+	// Regression test for #129: ClassifierFunc returns an ErrorCategory
+	// outside the known range (e.g. 99). Before the fix, this panics with
+	// "index out of range [99] with length 3" in retryWithPolicy.
+	//
+	// Expected behavior: unknown category falls back to Default (degraded)
+	// policy, task retries and completes successfully.
+	var calls int32
+
+	runner := longrun.NewRunner(longrun.RunnerOptions{
+		Baseline: longrun.Baseline{
+			Node:     longrun.Policy{Backoff: longrun.Backoff(1*time.Millisecond, 10*time.Millisecond)},
+			Service:  longrun.Policy{Backoff: longrun.Backoff(1*time.Millisecond, 10*time.Millisecond)},
+			Degraded: &longrun.Policy{Backoff: longrun.Backoff(1*time.Millisecond, 10*time.Millisecond)},
+			Classify: func(err error) *longrun.ErrorClass {
+				return &longrun.ErrorClass{Category: longrun.ErrorCategory(99)}
+			},
+		},
+	})
+
+	runner.Add(longrun.NewOneShotTask("test", func(context.Context) error {
+		n := atomic.AddInt32(&calls, 1)
+		if n == 1 {
+			return errors.New("classified as category 99")
+		}
+
+		return nil
+	}, nil))
+
+	err := runner.Wait(context.Background())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if n := atomic.LoadInt32(&calls); n != 2 {
+		t.Fatalf("expected 2 calls (1 fail + 1 success), got %d", n)
+	}
+}
+
 // --- timeout ---
 
 func TestOneShotTask_WithTimeout(t *testing.T) {
