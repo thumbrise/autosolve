@@ -40,8 +40,7 @@ import (
 func ClassifyTransport(err error) *ErrorClass {
 	// Timeout: url.Error wraps both client-side deadlines and dial timeouts.
 	// Check before net.OpError because url.Error often wraps net.OpError.
-	var urlErr *url.Error
-	if errors.As(err, &urlErr) && urlErr.Timeout() {
+	if urlErr, ok := errors.AsType[*url.Error](err); ok && urlErr.Timeout() {
 		return &ErrorClass{Category: CategoryNode}
 	}
 
@@ -51,13 +50,11 @@ func ClassifyTransport(err error) *ErrorClass {
 	}
 
 	// Network: TCP, DNS, TLS failures.
-	var netErr *net.OpError
-	if errors.As(err, &netErr) {
+	if _, ok := errors.AsType[*net.OpError](err); ok {
 		return &ErrorClass{Category: CategoryNode}
 	}
 
-	var dnsErr *net.DNSError
-	if errors.As(err, &dnsErr) {
+	if _, ok := errors.AsType[*net.DNSError](err); ok {
 		return &ErrorClass{Category: CategoryNode}
 	}
 
