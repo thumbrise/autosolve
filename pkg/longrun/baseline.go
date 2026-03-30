@@ -17,12 +17,16 @@ package longrun
 import "time"
 
 // ErrorCategory classifies an error for baseline policy selection.
+// Predefined categories cover common network integration scenarios.
+// Users can define custom categories for domain-specific classification:
+//
+//	const CategoryDatabase longrun.ErrorCategory = 10
 type ErrorCategory int
 
 const (
 	// CategoryUnknown means the error was not recognized by any classifier.
-	// If Baseline.Degraded is set — retry with degraded policy.
-	// If Baseline.Degraded is nil — permanent error.
+	// If Baseline.Default is set — retry with default policy.
+	// If Baseline.Default is nil — permanent error.
 	CategoryUnknown ErrorCategory = iota
 
 	// CategoryNode indicates a transport-level failure (TCP, DNS, TLS, timeout).
@@ -71,36 +75,73 @@ type Policy struct {
 // Baseline is a set of policies that Runner silently applies to every task.
 // Tasks don't know about baseline — it's configured once on Runner.
 //
+// Policies maps error categories to retry policies. Use predefined categories
+// (CategoryNode, CategoryService) or define your own.
+//
 // Classification pipeline in handleFailure:
 //
 //	[1] Built-in transport classify (net.OpError, timeout → Node)
 //	[2] User classifier via Classify (apierr interfaces → Service)
 //	[3] Not classified → Unknown ->
-//	    Unknown + Degraded != nil → retry with Degraded policy (LOUD log)
-//	    Unknown + Degraded == nil → permanent error
+//	    Unknown + Default != nil → retry with Default policy (LOUD log)
+//	    Unknown + Default == nil → permanent error
 type Baseline struct {
-	// Node policy for transport-level errors (TCP, DNS, TLS, timeout).
-	// Aggressive retry — network will recover.
-	Node Policy
+	// Policies maps error categories to their retry policies.
+	// Use predefined categories (CategoryNode, CategoryService) or define custom ones.
+	Policies map[ErrorCategory]Policy
 
-	// Service policy for service-pressure errors (rate limit, 5xx).
-	// Gentle retry — don't overload the remote service.
-	Service Policy
-
-	// Degraded policy for unknown/unclassified errors.
+	// Default policy for errors not matching any category in Policies.
 	// nil → unknown errors are permanent (crash). Use for preflights.
 	// non-nil → retry with loud ERROR logging. Use for workers.
-	Degraded *Policy
+	Default *Policy
 
 	// Classify is the application-level classifier.
 	// Called after built-in transport classification.
-	// nil = no application classification, only transport + degraded.
+	// nil = no application classification, only transport + default.
 	Classify ClassifierFunc
+}
+
+// NewBaseline creates a Baseline with Node and Service policies.
+// Default is nil — unknown errors are permanent.
+//
+// Example:
+//
+//	longrun.NewBaseline(
+//	    longrun.Policy{Backoff: longrun.Backoff(2*time.Second, 2*time.Minute)},
+//	    longrun.Policy{Backoff: longrun.Backoff(5*time.Second, 5*time.Minute)},
+//	    myClassifier,
+//	)
+func NewBaseline(node, service Policy, classify ClassifierFunc) Baseline {
+	return Baseline{
+		Policies: map[ErrorCategory]Policy{
+			CategoryNode:    node,
+			CategoryService: service,
+		},
+		Classify: classify,
+	}
+}
+
+// NewBaselineDegraded creates a Baseline with Node, Service, and Default policies.
+// Unknown errors retry with Default policy instead of crashing.
+//
+// Example:
+//
+//	longrun.NewBaselineDegraded(
+//	    longrun.Policy{Backoff: longrun.Backoff(2*time.Second, 2*time.Minute)},
+//	    longrun.Policy{Backoff: longrun.Backoff(5*time.Second, 5*time.Minute)},
+//	    longrun.Policy{Backoff: longrun.Backoff(30*time.Second, 5*time.Minute)},
+//	    myClassifier,
+//	)
+func NewBaselineDegraded(node, service, defaultPolicy Policy, classify ClassifierFunc) Baseline {
+	b := NewBaseline(node, service, classify)
+	b.Default = &defaultPolicy
+
+	return b
 }
 
 // isZero reports whether b is the zero-value Baseline (no policies configured).
 func (b *Baseline) isZero() bool {
-	return b.Node == (Policy{}) && b.Service == (Policy{}) && b.Degraded == nil && b.Classify == nil
+	return len(b.Policies) == 0 && b.Default == nil && b.Classify == nil
 }
 
 // Backoff is a convenience constructor for BackoffConfig with sensible defaults.

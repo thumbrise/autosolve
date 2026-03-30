@@ -71,16 +71,56 @@ func TestPolicy_ZeroRetries_IsUnlimited(t *testing.T) {
 	}
 }
 
-func TestBaseline_DegradedNil_IsZeroValue(t *testing.T) {
+func TestBaseline_DefaultNil_IsZeroValue(t *testing.T) {
 	b := longrun.Baseline{}
 
-	// Zero-value Baseline has Degraded == nil → unknown errors are permanent.
-	if b.Degraded != nil {
-		t.Fatal("expected nil Degraded in zero-value Baseline")
+	// Zero-value Baseline has Default == nil → unknown errors are permanent.
+	if b.Default != nil {
+		t.Fatal("expected nil Default in zero-value Baseline")
 	}
 
 	// Zero-value Baseline has Classify == nil → no application classifier.
 	if b.Classify != nil {
 		t.Fatal("expected nil Classify in zero-value Baseline")
+	}
+
+	// Zero-value Baseline has empty Policies map.
+	if len(b.Policies) != 0 {
+		t.Fatalf("expected empty Policies, got %d", len(b.Policies))
+	}
+}
+
+func TestNewBaseline_SetsNodeAndService(t *testing.T) {
+	node := longrun.Policy{Backoff: longrun.Backoff(1*time.Second, 1*time.Minute)}
+	service := longrun.Policy{Backoff: longrun.Backoff(2*time.Second, 2*time.Minute)}
+
+	b := longrun.NewBaseline(node, service, nil)
+
+	if len(b.Policies) != 2 {
+		t.Fatalf("expected 2 policies, got %d", len(b.Policies))
+	}
+
+	if b.Default != nil {
+		t.Fatal("expected nil Default from NewBaseline")
+	}
+}
+
+func TestNewBaselineDegraded_SetsDefault(t *testing.T) {
+	node := longrun.Policy{Backoff: longrun.Backoff(1*time.Second, 1*time.Minute)}
+	service := longrun.Policy{Backoff: longrun.Backoff(2*time.Second, 2*time.Minute)}
+	degraded := longrun.Policy{Backoff: longrun.Backoff(5*time.Second, 5*time.Minute)}
+
+	b := longrun.NewBaselineDegraded(node, service, degraded, nil)
+
+	if len(b.Policies) != 2 {
+		t.Fatalf("expected 2 policies, got %d", len(b.Policies))
+	}
+
+	if b.Default == nil {
+		t.Fatal("expected non-nil Default from NewBaselineDegraded")
+	}
+
+	if b.Default.Backoff.Initial != 5*time.Second {
+		t.Fatalf("expected Default.Backoff.Initial 5s, got %v", b.Default.Backoff.Initial)
 	}
 }

@@ -345,14 +345,14 @@ func TestBaseline_OutOfRangeCategory_NoPanic(t *testing.T) {
 	var calls int32
 
 	runner := longrun.NewRunner(longrun.RunnerOptions{
-		Baseline: longrun.Baseline{
-			Node:     longrun.Policy{Backoff: longrun.Backoff(1*time.Millisecond, 10*time.Millisecond)},
-			Service:  longrun.Policy{Backoff: longrun.Backoff(1*time.Millisecond, 10*time.Millisecond)},
-			Degraded: &longrun.Policy{Backoff: longrun.Backoff(1*time.Millisecond, 10*time.Millisecond)},
-			Classify: func(err error) *longrun.ErrorClass {
+		Baseline: longrun.NewBaselineDegraded(
+			longrun.Policy{Backoff: longrun.Backoff(1*time.Millisecond, 10*time.Millisecond)},
+			longrun.Policy{Backoff: longrun.Backoff(1*time.Millisecond, 10*time.Millisecond)},
+			longrun.Policy{Backoff: longrun.Backoff(1*time.Millisecond, 10*time.Millisecond)},
+			func(err error) *longrun.ErrorClass {
 				return &longrun.ErrorClass{Category: longrun.ErrorCategory(99)}
 			},
-		},
+		),
 	})
 
 	runner.Add(longrun.NewOneShotTask("test", func(context.Context) error {

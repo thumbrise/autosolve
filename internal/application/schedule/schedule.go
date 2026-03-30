@@ -61,14 +61,12 @@ func (s *Scheduler) Run(ctx context.Context) error {
 func (s *Scheduler) runPreflights(ctx context.Context, tasks []spec.Task) error {
 	runner := longrun.NewRunner(longrun.RunnerOptions{
 		Logger: s.logger,
-		Baseline: longrun.Baseline{
-			// Transport errors — aggressive retry, network will recover.
-			Node: longrun.Policy{Backoff: longrun.Backoff(2*time.Second, 2*time.Minute)},
-			// Service pressure — gentle retry, don't kick them while they're down.
-			Service: longrun.Policy{Backoff: longrun.Backoff(5*time.Second, 5*time.Minute)},
-			// Degraded: nil — unknown errors crash preflights. Fix your config.
-			Classify: infraClassifier(),
-		},
+		// Default: nil — unknown errors crash preflights. Fix your config.
+		Baseline: longrun.NewBaseline(
+			longrun.Policy{Backoff: longrun.Backoff(2*time.Second, 2*time.Minute)}, // Node — aggressive retry
+			longrun.Policy{Backoff: longrun.Backoff(5*time.Second, 5*time.Minute)}, // Service — gentle retry
+			infraClassifier(),
+		),
 	})
 
 	for _, t := range tasks {
@@ -81,15 +79,13 @@ func (s *Scheduler) runPreflights(ctx context.Context, tasks []spec.Task) error 
 func (s *Scheduler) runWorkers(ctx context.Context, tasks []spec.Task) error {
 	runner := longrun.NewRunner(longrun.RunnerOptions{
 		Logger: s.logger,
-		Baseline: longrun.Baseline{
-			// Transport errors — aggressive retry, network will recover.
-			Node: longrun.Policy{Backoff: longrun.Backoff(2*time.Second, 2*time.Minute)},
-			// Service pressure — gentle retry, don't kick them while they're down.
-			Service: longrun.Policy{Backoff: longrun.Backoff(5*time.Second, 5*time.Minute)},
-			// Unknown errors — don't crash, scream loudly, retry with big backoff.
-			Degraded: &longrun.Policy{Backoff: longrun.Backoff(30*time.Second, 5*time.Minute)},
-			Classify: infraClassifier(),
-		},
+		// Unknown errors — don't crash, scream loudly, retry with big backoff.
+		Baseline: longrun.NewBaselineDegraded(
+			longrun.Policy{Backoff: longrun.Backoff(2*time.Second, 2*time.Minute)},  // Node — aggressive retry
+			longrun.Policy{Backoff: longrun.Backoff(5*time.Second, 5*time.Minute)},  // Service — gentle retry
+			longrun.Policy{Backoff: longrun.Backoff(30*time.Second, 5*time.Minute)}, // Default — degraded
+			infraClassifier(),
+		),
 	})
 
 	for _, t := range tasks {
