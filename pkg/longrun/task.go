@@ -16,6 +16,7 @@ package longrun
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"time"
 
@@ -45,14 +46,14 @@ type Task struct {
 	logger   *slog.Logger
 
 	// baselineAttempts tracks consecutive retry attempts per baseline category.
-	// Indexed by ErrorCategory (CategoryUnknown=0, CategoryNode=1, CategoryService=2).
+	// Keyed by ErrorCategory — supports both predefined and user-defined categories.
 	// Used for exponential backoff: attempt N → Backoff.Duration(N).
 	// Reset to zero on successful tick (hadProgress=true) together with rule trackers.
 	//
 	// Example: WiFi drops, 3 consecutive Node errors:
 	//   attempt 0 → 2s, attempt 1 → 4s, attempt 2 → 8s
 	//   WiFi recovers, tick succeeds → all counters reset to 0.
-	baselineAttempts [3]int
+	baselineAttempts map[ErrorCategory]int
 }
 
 // NewOneShotTask creates a task that executes once.
@@ -122,14 +123,15 @@ func newTask(name string, interval time.Duration, work WorkFunc, rules []Transie
 	}
 
 	return &Task{
-		name:     name,
-		work:     work,
-		shutdown: cfg.shutdown,
-		interval: interval,
-		timeout:  cfg.timeout,
-		delay:    cfg.delay,
-		rules:    ruleStates,
-		logger:   logger,
+		name:             name,
+		work:             work,
+		shutdown:         cfg.shutdown,
+		interval:         interval,
+		timeout:          cfg.timeout,
+		delay:            cfg.delay,
+		rules:            ruleStates,
+		logger:           logger,
+		baselineAttempts: make(map[ErrorCategory]int),
 	}
 }
 
@@ -208,8 +210,8 @@ func (t *Task) runWithPolicy(ctx context.Context) error {
 //     a. Built-in transport classify (net.OpError, timeout → Node)
 //     b. User classifier via Baseline.Classify (apierr interfaces → Service)
 //     c. Not classified → Unknown ->
-//     Unknown + Degraded != nil → retry with Degraded policy (LOUD log)
-//     Unknown + Degraded == nil → permanent error
+//     Unknown + Default != nil → retry with Default policy (LOUD log)
+//     Unknown + Default == nil → permanent error
 //
 // Retry budget semantics: when an interval task completes a successful tick
 // (hadProgress=true), all rule trackers reset to zero — so intermittent failures
@@ -241,7 +243,9 @@ func (t *Task) handleBaselineFailure(ctx context.Context, err error) error {
 		return err
 	}
 
-	isDegraded := class.Category == CategoryUnknown
+	_, knownCategory := t.baseline.Policies[class.Category]
+
+	isDegraded := !knownCategory
 	if isDegraded {
 		t.logger.ErrorContext(ctx, "DEGRADED: unknown error, retrying with degraded policy",
 			slog.Any("error", err),
@@ -253,37 +257,34 @@ func (t *Task) handleBaselineFailure(ctx context.Context, err error) error {
 
 // classifyWithBaseline runs the classification pipeline and returns the
 // ErrorClass and the matching Policy. Returns nil policy when the error
-// is unknown and Baseline.Degraded is nil.
+// is unknown and Baseline.Default is nil.
 func (t *Task) classifyWithBaseline(err error) (*ErrorClass, *Policy) {
 	// [1] Built-in transport classify.
 	if class := ClassifyTransport(err); class != nil {
-		return class, &t.baseline.Node
+		return class, t.policyFor(class.Category)
 	}
 
 	// [2] User classifier.
 	if t.baseline.Classify != nil {
 		if class := t.baseline.Classify(err); class != nil {
-			p := t.baseline.Degraded
-
-			switch class.Category {
-			case CategoryNode:
-				p = &t.baseline.Node
-			case CategoryService:
-				p = &t.baseline.Service
-			case CategoryUnknown:
-				// CategoryUnknown or future categories → Degraded policy.
-				// Preserves class (including WaitDuration) from the classifier.
-				p = t.baseline.Degraded
-			}
-
-			return class, p
+			return class, t.policyFor(class.Category)
 		}
 	}
 
 	// [3] Unknown — no classifier matched.
 	unknown := &ErrorClass{Category: CategoryUnknown}
 
-	return unknown, t.baseline.Degraded // Degraded may be nil → permanent
+	return unknown, t.baseline.Default // Default may be nil → permanent
+}
+
+// policyFor returns the policy for the given category.
+// Falls back to Baseline.Default when the category has no explicit policy.
+func (t *Task) policyFor(cat ErrorCategory) *Policy {
+	if p, ok := t.baseline.Policies[cat]; ok {
+		return &p
+	}
+
+	return t.baseline.Default
 }
 
 // retryWithRule retries using a per-task TransientRule (legacy path).
@@ -377,9 +378,9 @@ func categoryName(c ErrorCategory) string {
 		return "node"
 	case CategoryService:
 		return "service"
+	default:
+		return fmt.Sprintf("category_%d", c)
 	}
-
-	return "degraded"
 }
 
 // waitDuration sleeps for d or until ctx is cancelled.
@@ -412,7 +413,7 @@ func (t *Task) resetAllRules() {
 		t.rules[i].tracker.Reset()
 	}
 
-	t.baselineAttempts = [3]int{}
+	t.baselineAttempts = make(map[ErrorCategory]int)
 }
 
 // runLoop runs the ticker loop (interval > 0) or a single invocation (one-shot).
