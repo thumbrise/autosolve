@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package workers
+package global
 
 import (
 	"context"
@@ -32,13 +32,14 @@ import (
 
 	"github.com/thumbrise/autosolve/internal/config"
 	"github.com/thumbrise/autosolve/internal/domain/spec"
+	"github.com/thumbrise/autosolve/internal/domain/spec/repository"
 	"github.com/thumbrise/autosolve/internal/infrastructure/dal/sqlcgen"
 	githubinfra "github.com/thumbrise/autosolve/internal/infrastructure/github"
 	"github.com/thumbrise/autosolve/internal/infrastructure/ollama"
 	"github.com/thumbrise/autosolve/internal/infrastructure/queue"
 )
 
-const explainerOtelLibrary = "github.com/thumbrise/autosolve/internal/domain/spec/workers/issue_explainer"
+const explainerOtelLibrary = "github.com/thumbrise/autosolve/internal/domain/spec/global/issue_explainer"
 
 var explainerMeter = otel.Meter(explainerOtelLibrary)
 
@@ -102,8 +103,8 @@ func NewIssueExplainer(cfg *config.Github, db *sql.DB, queries *sqlcgen.Queries,
 	return &IssueExplainer{cfg: cfg, db: db, queries: queries, queue: queue, ollama: ollamaClient, github: githubClient, logger: logger}
 }
 
-func (e *IssueExplainer) TaskSpec() spec.GlobalWorkerSpec {
-	return spec.GlobalWorkerSpec{
+func (e *IssueExplainer) TaskSpec() spec.GlobalTaskSpec {
+	return spec.GlobalTaskSpec{
 		Resource: "issue-explainer",
 		Interval: issueExplainerInterval,
 		Work:     e.Run,
@@ -152,7 +153,7 @@ func (e *IssueExplainer) processMessage(ctx context.Context, msg *goqite.Message
 	)
 
 	switch job.Type {
-	case jobTypeIssueExplain:
+	case repository.JobTypeIssueExplain:
 		return e.explainIssue(ctx, msg.ID, job)
 	default:
 		e.logger.WarnContext(ctx, "unknown job type, deleting",

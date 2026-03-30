@@ -16,42 +16,49 @@ package schedule
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"time"
 
+	"github.com/thumbrise/autosolve/internal/contracts/apierr"
+	"github.com/thumbrise/autosolve/internal/domain/spec"
 	"github.com/thumbrise/autosolve/pkg/longrun"
 )
 
 // Scheduler orchestrates execution in two phases:
 //  1. Preflights — one-shot tasks, all must pass before workers start.
-//  2. Workers — long-running interval tasks (per-repo and global).
+//  2. Workers — long-running interval tasks.
 //
-// Scheduler is generic — it doesn't know about repositories, GitHub, or issues.
-// It only knows phases and task units provided by Planner and global workers.
+// Scheduler trusts Planner — it receives a flat list of Units and knows
+// nothing about repositories, partitions, or scopes.
 type Scheduler struct {
-	planner       *Planner
-	globalWorkers []GlobalWorker
-	logger        *slog.Logger
+	planner *Planner
+	logger  *slog.Logger
 }
 
-func NewScheduler(planner *Planner, globalWorkers []GlobalWorker, logger *slog.Logger) *Scheduler {
-	return &Scheduler{planner: planner, globalWorkers: globalWorkers, logger: logger}
+// NewScheduler creates a Scheduler.
+func NewScheduler(planner *Planner, logger *slog.Logger) *Scheduler {
+	return &Scheduler{planner: planner, logger: logger}
 }
 
+// Run executes tasks in lifecycle order: preflights first, then workers.
 func (s *Scheduler) Run(ctx context.Context) error {
-	s.logger.InfoContext(ctx, "scheduler: running preflights")
+	preflights := s.planner.Preflights()
+	workers := s.planner.Workers()
 
-	if err := s.runPreflights(ctx); err != nil {
+	s.logger.InfoContext(ctx, "scheduler: running preflights", slog.Int("count", len(preflights)))
+
+	if err := s.runPreflights(ctx, preflights); err != nil {
 		return fmt.Errorf("preflights failed: %w", err)
 	}
 
-	s.logger.InfoContext(ctx, "scheduler: preflights done, starting workers")
+	s.logger.InfoContext(ctx, "scheduler: preflights done, starting workers", slog.Int("count", len(workers)))
 
-	return s.runWorkers(ctx)
+	return s.runWorkers(ctx, workers)
 }
 
-func (s *Scheduler) runPreflights(ctx context.Context) error {
+func (s *Scheduler) runPreflights(ctx context.Context, tasks []spec.Task) error {
 	runner := longrun.NewRunner(longrun.RunnerOptions{
 		Logger: s.logger,
 		Baseline: longrun.Baseline{
@@ -60,19 +67,18 @@ func (s *Scheduler) runPreflights(ctx context.Context) error {
 			// Service pressure — gentle retry, don't kick them while they're down.
 			Service: longrun.Policy{Backoff: longrun.Backoff(5*time.Second, 5*time.Minute)},
 			// Degraded: nil — unknown errors crash preflights. Fix your config.
-			Classify: s.planner.InfraClassifier(),
+			Classify: infraClassifier(),
 		},
 	})
 
-	for _, u := range s.planner.Preflights() {
-		name := fmt.Sprintf("preflight:%s:%s/%s", u.Resource, u.Repo.Owner, u.Repo.Name)
-		runner.Add(longrun.NewOneShotTask(name, u.Work, nil))
+	for _, t := range tasks {
+		runner.Add(longrun.NewOneShotTask(t.Name, t.Work, nil))
 	}
 
 	return runner.Wait(ctx)
 }
 
-func (s *Scheduler) runWorkers(ctx context.Context) error {
+func (s *Scheduler) runWorkers(ctx context.Context, tasks []spec.Task) error {
 	runner := longrun.NewRunner(longrun.RunnerOptions{
 		Logger: s.logger,
 		Baseline: longrun.Baseline{
@@ -82,21 +88,45 @@ func (s *Scheduler) runWorkers(ctx context.Context) error {
 			Service: longrun.Policy{Backoff: longrun.Backoff(5*time.Second, 5*time.Minute)},
 			// Unknown errors — don't crash, scream loudly, retry with big backoff.
 			Degraded: &longrun.Policy{Backoff: longrun.Backoff(30*time.Second, 5*time.Minute)},
-			Classify: s.planner.InfraClassifier(),
+			Classify: infraClassifier(),
 		},
 	})
 
-	for _, u := range s.planner.Workers() {
-		name := fmt.Sprintf("worker:%s:%s/%s", u.Resource, u.Repo.Owner, u.Repo.Name)
-		runner.Add(longrun.NewIntervalTask(name, u.Interval, u.Work, nil))
-	}
-
-	// Global workers — not multiplied per repository.
-	for _, gw := range s.globalWorkers {
-		gs := gw.TaskSpec()
-		name := "worker:" + gs.Resource
-		runner.Add(longrun.NewIntervalTask(name, gs.Interval, gs.Work, nil))
+	for _, t := range tasks {
+		runner.Add(longrun.NewIntervalTask(t.Name, t.Interval, t.Work, nil))
 	}
 
 	return runner.Wait(ctx)
+}
+
+// infraClassifier returns a ClassifierFunc that checks apierr interfaces
+// on errors returned by infrastructure clients.
+//
+// Classification:
+//   - apierr.WaitHinted with positive WaitDuration → Service + explicit wait
+//   - apierr.ServicePressure → Service
+//   - apierr.Retryable → Service
+//   - unknown → nil (let baseline handle as Unknown/Degraded)
+func infraClassifier() longrun.ClassifierFunc {
+	return func(err error) *longrun.ErrorClass {
+		var wh apierr.WaitHinted
+		if errors.As(err, &wh) && wh.WaitDuration() > 0 {
+			return &longrun.ErrorClass{
+				Category:     longrun.CategoryService,
+				WaitDuration: wh.WaitDuration(),
+			}
+		}
+
+		var sp apierr.ServicePressure
+		if errors.As(err, &sp) && sp.ServicePressure() {
+			return &longrun.ErrorClass{Category: longrun.CategoryService}
+		}
+
+		var rt apierr.Retryable
+		if errors.As(err, &rt) && rt.Retryable() {
+			return &longrun.ErrorClass{Category: longrun.CategoryService}
+		}
+
+		return nil
+	}
 }

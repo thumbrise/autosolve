@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package workers
+package repository
 
 import (
 	"context"
@@ -24,12 +24,10 @@ import (
 
 	"go.opentelemetry.io/otel"
 
-	"github.com/thumbrise/autosolve/internal/domain/spec"
-	"github.com/thumbrise/autosolve/internal/domain/spec/tenants"
 	"github.com/thumbrise/autosolve/internal/infrastructure/dal/sqlcgen"
 )
 
-const relayOtelLibrary = "github.com/thumbrise/autosolve/internal/domain/spec/workers/outbox_relay"
+const relayOtelLibrary = "github.com/thumbrise/autosolve/internal/domain/spec/repository/outbox_relay"
 
 var relayMeter = otel.Meter(relayOtelLibrary)
 
@@ -62,12 +60,12 @@ const (
 	outboxTopicIssuesSynced = "issues:synced"
 	outboxBatchLimit        = 20
 
-	jobTypeIssueExplain = "issue-explain"
+	JobTypeIssueExplain = "issue-explain"
 )
 
 // topicJobType maps outbox topics to job types. Extend when new topics appear.
 var topicJobType = map[string]string{
-	outboxTopicIssuesSynced: jobTypeIssueExplain,
+	outboxTopicIssuesSynced: JobTypeIssueExplain,
 }
 
 // JobQueue is the interface OutboxRelay uses to enqueue work.
@@ -89,20 +87,20 @@ func NewOutboxRelay(db *sql.DB, queries *sqlcgen.Queries, queue JobQueue, logger
 	return &OutboxRelay{db: db, queries: queries, queue: queue, logger: logger}
 }
 
-func (r *OutboxRelay) TaskSpec() spec.WorkerSpec {
-	return spec.WorkerSpec{
+func (r *OutboxRelay) TaskSpec() TaskSpec {
+	return TaskSpec{
 		Resource: "outbox-relay",
 		Interval: 5 * time.Second,
 		Work:     r.Run,
 	}
 }
 
-func (r *OutboxRelay) Run(ctx context.Context, tenant tenants.RepositoryTenant) error {
+func (r *OutboxRelay) Run(ctx context.Context, partition Partition) error {
 	start := time.Now()
 
 	events, err := r.queries.PendingOutboxEvents(ctx, r.db, sqlcgen.PendingOutboxEventsParams{
 		Topic:        outboxTopicIssuesSynced,
-		RepositoryID: tenant.RepositoryID,
+		RepositoryID: partition.RepositoryID,
 		Limit:        outboxBatchLimit,
 	})
 	if err != nil {

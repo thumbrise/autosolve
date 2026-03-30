@@ -42,7 +42,7 @@ While the integration layer is being designed, you can already extend autosolve 
 
 - [Adding a Worker](./adding-worker) — new polling or processing tasks
 - Adding infrastructure clients in `internal/infrastructure/` — new API clients, storage backends
-- Adding new tenant types — see [Extension Points](https://github.com/thumbrise/autosolve/blob/main/internal/application/README.md#extension-points-tenants)
+- Adding new partition types — see [Schedule Package](/internals/schedule#extension-points)
 
 ## Conventions
 

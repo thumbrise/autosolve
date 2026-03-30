@@ -19,7 +19,8 @@ import (
 
 	"github.com/thumbrise/autosolve/internal/application/schedule"
 	"github.com/thumbrise/autosolve/internal/config"
-	"github.com/thumbrise/autosolve/internal/domain/spec/workers"
+	"github.com/thumbrise/autosolve/internal/domain"
+	"github.com/thumbrise/autosolve/internal/domain/spec/repository"
 	"github.com/thumbrise/autosolve/internal/infrastructure/dal/repositories"
 	"github.com/thumbrise/autosolve/internal/infrastructure/dal/sqlcgen"
 	"github.com/thumbrise/autosolve/internal/infrastructure/database"
@@ -49,10 +50,11 @@ var Bindings = wire.NewSet(
 	ollama.NewClient,
 
 	repositories.NewIssueSyncer,
-	wire.Bind(new(workers.IssueSyncRepo), new(*repositories.IssueSyncer)),
+	wire.Bind(new(repository.IssueSyncRepo), new(*repositories.IssueSyncer)),
 
 	repositories.NewRepositoryRepository,
+	wire.Bind(new(domain.RepositoryStore), new(*repositories.RepositoryRepository)),
 
 	queue.NewQueue,
-	wire.Bind(new(workers.JobQueue), new(*queue.Queue)),
+	wire.Bind(new(repository.JobQueue), new(*queue.Queue)),
 )

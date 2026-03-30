@@ -12,8 +12,8 @@ import (
 	"github.com/thumbrise/autosolve/cmd/cmds"
 	"github.com/thumbrise/autosolve/internal/application/schedule"
 	config2 "github.com/thumbrise/autosolve/internal/config"
-	"github.com/thumbrise/autosolve/internal/domain/spec/preflights"
-	"github.com/thumbrise/autosolve/internal/domain/spec/workers"
+	"github.com/thumbrise/autosolve/internal/domain/spec/global"
+	"github.com/thumbrise/autosolve/internal/domain/spec/repository"
 	"github.com/thumbrise/autosolve/internal/infrastructure/config"
 	"github.com/thumbrise/autosolve/internal/infrastructure/dal/repositories"
 	"github.com/thumbrise/autosolve/internal/infrastructure/dal/sqlcgen"
@@ -32,10 +32,6 @@ func InitializeKernel(contextContext context.Context, reader *config.Reader, log
 	if err != nil {
 		return nil, err
 	}
-	minIntervalThrottler := limit.NewMinIntervalThrottler(configGithub)
-	transport := github.NewTransport(minIntervalThrottler)
-	domainMapper := github.NewDomainMapper()
-	client := github.NewClient(logger, configGithub, transport, domainMapper)
 	configDatabase, err := config2.NewDatabase(contextContext, reader)
 	if err != nil {
 		return nil, err
@@ -46,22 +42,25 @@ func InitializeKernel(contextContext context.Context, reader *config.Reader, log
 	}
 	queries := sqlcgen.New()
 	repositoryRepository := repositories.NewRepositoryRepository(db, queries, logger)
-	repositoryValidator := preflights.NewRepositoryValidator(client, repositoryRepository, logger)
-	v := schedule.NewPreflights(repositoryValidator)
+	repositoryTasks := schedule.NewRepositoryTasks(configGithub, repositoryRepository)
+	minIntervalThrottler := limit.NewMinIntervalThrottler(configGithub)
+	transport := github.NewTransport(minIntervalThrottler)
+	domainMapper := github.NewDomainMapper()
+	client := github.NewClient(logger, configGithub, transport, domainMapper)
+	validator := repository.NewValidator(client, repositoryRepository, logger)
 	issueSyncer := repositories.NewIssueSyncer(db, queries, logger)
-	issuePoller := workers.NewIssuePoller(configGithub, client, logger, issueSyncer)
+	issuePoller := repository.NewIssuePoller(configGithub, client, logger, issueSyncer)
 	queueQueue := queue.NewQueue(db)
-	outboxRelay := workers.NewOutboxRelay(db, queries, queueQueue, logger)
-	v2 := schedule.NewWorkers(issuePoller, outboxRelay)
-	planner := schedule.NewPlanner(configGithub, v, v2, repositoryRepository)
+	outboxRelay := repository.NewOutboxRelay(db, queries, queueQueue, logger)
 	configOllama, err := config2.NewOllama(contextContext, reader)
 	if err != nil {
 		return nil, err
 	}
 	ollamaClient := ollama.NewClient(configOllama)
-	issueExplainer := workers.NewIssueExplainer(configGithub, db, queries, queueQueue, ollamaClient, client, logger)
-	v3 := schedule.NewGlobalWorkers(issueExplainer)
-	scheduler := schedule.NewScheduler(planner, v3, logger)
+	issueExplainer := global.NewIssueExplainer(configGithub, db, queries, queueQueue, ollamaClient, client, logger)
+	v := schedule.NewTasks(repositoryTasks, validator, issuePoller, outboxRelay, issueExplainer)
+	planner := schedule.NewPlanner(v)
+	scheduler := schedule.NewScheduler(planner, logger)
 	cmdsSchedule := cmds.NewSchedule(scheduler)
 	migrate := cmds.NewMigrate()
 	migrator, err := database.NewMigrator(db, configDatabase)
@@ -82,8 +81,8 @@ func InitializeKernel(contextContext context.Context, reader *config.Reader, log
 	jobsList := cmds.NewJobsList(db)
 	jobsShow := cmds.NewJobsShow(db)
 	dev := cmds.NewDev(db, queries, ollamaClient, logger)
-	v4 := cmd.NewCommands(cmdsSchedule, migrate, migrateUp, migrateUpFresh, migrateDown, migrateStatus, migrateCreate, migrateRedo, test, testSubTree, outbox, outboxReplay, jobs, jobsList, jobsShow, dev)
+	v2 := cmd.NewCommands(cmdsSchedule, migrate, migrateUp, migrateUpFresh, migrateDown, migrateStatus, migrateCreate, migrateRedo, test, testSubTree, outbox, outboxReplay, jobs, jobsList, jobsShow, dev)
 	root := cmd.NewRoot()
-	kernel := NewKernel(v4, db, logger, root)
+	kernel := NewKernel(v2, db, logger, root)
 	return kernel, nil
 }

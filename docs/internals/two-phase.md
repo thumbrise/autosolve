@@ -48,31 +48,34 @@ Long-running interval tasks. Two kinds:
 
 Workers have **Degraded mode enabled** — unknown errors don't crash the worker, they retry with exponential backoff and loud ERROR logging. Like `docker restart: always`.
 
-## How Planner Connects Them
+## How Registry and Planner Connect Them
 
-`Planner` is the glue. It takes domain specs and multiplies them by repos:
+The registry DSL declares all tasks. `RepositoryTasks.Pack()` multiplies per-repo specs by configured repositories. Planner splits the resulting `[]spec.Task` by Phase:
 
 ```
-RepositoryValidator.TaskSpec() → PreflightSpec{Resource: "repository-validator", Work: ...}
-IssuePoller.TaskSpec()         → WorkerSpec{Resource: "issue-poller", Interval: 10s, Work: ...}
-IssueExplainer.TaskSpec()      → GlobalWorkerSpec{Resource: "issue-explainer", Interval: 2s, Work: ...}
+Registry DSL:
+  repos.Pack(
+      Preflight(validator.TaskSpec()),   → Phase=Preflight, per repo
+      issuePoller.TaskSpec(),            → Phase=Work, per repo
+      outboxRelay.TaskSpec(),            → Phase=Work, per repo
+  )
+  globalTasks(explainer.TaskSpec())      → Phase=Work, single instance
 
 Planner.Preflights() → [
-  PreflightUnit{Repo: "thumbrise/autosolve", Work: closure(RepoTenant)},
-  PreflightUnit{Repo: "thumbrise/otelext",   Work: closure(RepoTenant)},
+  Task{Name: "preflight:repository-validator:thumbrise/autosolve", ...},
+  Task{Name: "preflight:repository-validator:thumbrise/otelext", ...},
 ]
 
 Planner.Workers() → [
-  WorkerUnit{Repo: "thumbrise/autosolve", Interval: 10s, Work: closure(RepoTenant)},
-  WorkerUnit{Repo: "thumbrise/otelext",   Interval: 10s, Work: closure(RepoTenant)},
-]
-
-GlobalWorkers → [
-  IntervalTask{Name: "worker:issue-explainer", Interval: 2s, Work: ...},
+  Task{Name: "worker:issue-poller:thumbrise/autosolve", Interval: 10s, ...},
+  Task{Name: "worker:issue-poller:thumbrise/otelext", Interval: 10s, ...},
+  Task{Name: "worker:outbox-relay:thumbrise/autosolve", Interval: 5s, ...},
+  Task{Name: "worker:outbox-relay:thumbrise/otelext", Interval: 5s, ...},
+  Task{Name: "worker:issue-explainer", Interval: 2s, ...},
 ]
 ```
 
-Scheduler formats task names: `worker:issue-poller:thumbrise/otelext` (per-repo), `worker:issue-explainer` (global).
+See [Schedule Package](./schedule) for DSL details and extension points.
 
 ## Retry Policies
 
@@ -88,6 +91,7 @@ See [Error Handling & Retry](./error-handling) for the full classification pipel
 
 ## Source
 
-- [`internal/application/schedule.go`](https://github.com/thumbrise/autosolve/blob/main/internal/application/schedule.go) — Scheduler
-- [`internal/application/planner.go`](https://github.com/thumbrise/autosolve/blob/main/internal/application/planner.go) — Planner
-- [`internal/application/contracts.go`](https://github.com/thumbrise/autosolve/blob/main/internal/application/contracts.go) — Preflight / Worker interfaces
+- [`internal/application/schedule/schedule.go`](https://github.com/thumbrise/autosolve/blob/main/internal/application/schedule/schedule.go) — Scheduler
+- [`internal/application/schedule/planner.go`](https://github.com/thumbrise/autosolve/blob/main/internal/application/schedule/planner.go) — Planner
+- [`internal/application/schedule/registry.go`](https://github.com/thumbrise/autosolve/blob/main/internal/application/schedule/registry.go) — Registry DSL
+- [`internal/application/schedule/repository_tasks.go`](https://github.com/thumbrise/autosolve/blob/main/internal/application/schedule/repository_tasks.go) — Pack / Preflight

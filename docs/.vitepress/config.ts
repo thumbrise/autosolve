@@ -42,6 +42,7 @@ export default defineConfig({
           text: 'Internals',
           items: [
             {text: 'Architecture Overview', link: '/internals/overview'},
+            {text: 'Schedule Package', link: '/internals/schedule'},
             {text: 'Two-Phase Scheduler', link: '/internals/two-phase'},
             {text: 'Error Handling & Retry', link: '/internals/error-handling'},
             {text: 'longrun Package', link: '/internals/longrun'},
@@ -71,6 +72,7 @@ export default defineConfig({
             {text: '#7 — DX & Inner Loop', link: '/devlog/007-dx-inner-loop'},
             {text: '#8 — goqite over hand-rolled jobs', link: '/devlog/008-goqite-over-hand-rolled-jobs'},
             {text: '#9 — The First Visible Output', link: '/devlog/009-first-visible-output'},
+            {text: '#10 — The Partition Refactor', link: '/devlog/010-partition-based-dsl'},
           ],
         },
       ],

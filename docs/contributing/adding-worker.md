@@ -1,122 +1,153 @@
 ---
-title: Adding a Worker to autosolve
-description: Step-by-step guide to adding a new polling worker in autosolve — create a domain spec, register in DI, run codegen, and let the Planner handle the rest.
+title: Adding a Task to autosolve
+description: Step-by-step guide to adding a new task in autosolve — create a domain spec, register in the DSL, run codegen, done.
 ---
 
-# Adding a Worker
+# Adding a Task
 
-This is the most common way to extend autosolve. A worker is a long-running interval task that does something for each configured repository.
+This is the most common way to extend autosolve. Three steps: declare, register, generate.
 
 ::: info Example
-The existing `IssuePoller` polls GitHub for updated issues every 5 seconds per repo. You might add a `CommentPoller`, `PRPoller`, or `LabelWatcher` — same pattern.
+The existing `IssuePoller` polls GitHub for updated issues every 10 seconds per repo. You might add a `CommentPoller`, `PRPoller`, or `LabelWatcher` — same pattern.
 :::
 
-## Steps
+## Per-Repository Task
 
-### 1. Create the Domain Type
+### 1. Declare
 
-Create a new file in `internal/domain/spec/workers/`:
+Create a new file in `internal/domain/spec/repository/`:
 
 ```go
-package workers
+package repository
 
 type CommentPoller struct {
+    cfg          *config.Github
     githubClient *githubinfra.Client
-    // ... your dependencies
-    logger *slog.Logger
-    cfg    *config.Github
+    logger       *slog.Logger
 }
 
-func NewCommentPoller(/* dependencies */) *CommentPoller {
-    return &CommentPoller{/* assign fields */}
+func NewCommentPoller(cfg *config.Github, githubClient *githubinfra.Client, logger *slog.Logger) *CommentPoller {
+    return &CommentPoller{cfg: cfg, githubClient: githubClient, logger: logger}
 }
-```
 
-### 2. Implement the Worker Interface
-
-Return a `WorkerSpec` from `TaskSpec()`:
-
-```go
-func (p *CommentPoller) TaskSpec() spec.WorkerSpec {
-    return spec.WorkerSpec{
-        Resource: "comment-poller",      // used in task name
+func (p *CommentPoller) TaskSpec() TaskSpec {
+    return TaskSpec{
+        Resource: "comment-poller",
         Interval: p.cfg.Comments.PollInterval,
         Work:     p.Run,
     }
 }
 
-func (p *CommentPoller) Run(ctx context.Context, tenant tenants.RepositoryTenant) error {
-    // Your logic here. tenant has Owner, Name, RepositoryID.
+func (p *CommentPoller) Run(ctx context.Context, partition Partition) error {
+    // partition has Owner, Name, RepositoryID — honest, typed, no context magic.
     // Return sentinel errors for classifiable failures.
     return nil
 }
 ```
 
-The `Resource` field becomes part of the task name: `worker:comment-poller:thumbrise/autosolve`.
+Domain is naive — it declares work and its partition need. No retry logic, no multi-repo logic, no lifecycle phase.
 
-### 3. Register in DI
+### 2. Register
 
-Add your type to `internal/application/registry.go`:
+Add one line to `internal/application/schedule/registry.go`:
 
 ```go
-func NewWorkers(
-    issueParser *workers.IssuePoller,
-    commentPoller *workers.CommentPoller,  // ← add here
-) []Worker {
-    return []Worker{
-        issueParser,
-        commentPoller,  // ← and here
-    }
+func NewTasks(
+    repos *RepositoryTasks,
+    // ...existing params...
+    commentPoller *repository.CommentPoller,  // ← add param
+    // ...
+) []spec.Task {
+    return join(
+        repos.Pack(
+            // ...existing specs...
+            commentPoller.TaskSpec(),  // ← add here
+        ),
+        globalTasks(
+            // ...
+        ),
+    )
 }
 ```
 
-Add the constructor to `internal/bindings.go`:
+Add the constructor to `Bindings` in the same file:
 
 ```go
 var Bindings = wire.NewSet(
     // ...existing bindings...
-    workers.NewCommentPoller,  // ← add here
+    repository.NewCommentPoller,  // ← add here
 )
 ```
 
-### 4. Generate
+### 3. Generate
 
 ```bash
 task generate
 ```
 
-This runs sqlc + Wire + license headers. Wire will regenerate `wire_gen.go` with your new dependency.
+Done. Your task runs for every configured repository. `RepositoryTasks.Pack()` multiplies it automatically.
 
-### 5. Done
+The `Resource` field becomes part of the task name: `worker:comment-poller:thumbrise/autosolve`.
 
-Your worker will now run for every configured repository. The Planner multiplies your spec by repos automatically. Retry, backoff, degraded mode — all handled by the Baseline on Runner.
+## Global Task
+
+Global tasks are not multiplied per repository. They run once, consuming shared resources (e.g. a job queue).
+
+Same three steps, but:
+- Return `spec.GlobalTaskSpec` instead of `spec.TaskSpec`
+- `Work` takes only `context.Context` — no partition parameter
+- Register in `globalTasks(...)` instead of `repos.Pack(...)`
+
+```go
+func (e *QueueDrainer) TaskSpec() spec.GlobalTaskSpec {
+    return spec.GlobalTaskSpec{
+        Resource: "queue-drainer",
+        Interval: 5 * time.Second,
+        Work:     e.Run,
+    }
+}
+```
+
+Example: `IssueExplainer` — consumes the shared goqite queue, calls Ollama.
+
+## Preflight Task
+
+A preflight is a one-shot task that runs before all workers. Use it for environment setup (validate repos, check API access).
+
+Same as per-repository task, but wrap with `Preflight()` in the registry:
+
+```go
+repos.Pack(
+    Preflight(repoValidator.TaskSpec()),  // ← runs once, before workers
+    commentPoller.TaskSpec(),
+)
+```
+
+Domain doesn't know it's a preflight — the registry decides the lifecycle phase.
+
+Preflights receive `Partition` with `RepositoryID=0` (the DB row may not exist yet). Unknown errors are fatal (no Degraded mode).
 
 ## What You Don't Need to Do
 
 - **No retry logic** — Baseline handles transport and service errors
-- **No multi-repo logic** — Planner creates per-repo closures
+- **No multi-repo logic** — `Pack()` multiplies per repo automatically
 - **No OTEL code** — every invocation is automatically traced
-- **No task naming** — Scheduler formats it from your Resource + repo
+- **No task naming** — generated from Resource + partition label
+- **No lifecycle phase** — registry decides preflight vs worker
 
-## Adding a Global Worker Instead?
+## Adding a New Partition Dimension?
 
-Global workers are not multiplied per repository. They run once, consuming shared resources (e.g. a job queue).
+See the `RepositoryTasks` pattern. Create a new provider (e.g. `OrganizationTasks`), add a new section in the registry:
 
-Same pattern, but:
-- Implement `GlobalWorker` interface and return `GlobalWorkerSpec`
-- `Work` takes only `context.Context` — no tenant parameter
-- Register in `NewGlobalWorkers()` instead of `NewWorkers()`
-- Scheduler adds them directly, bypassing Planner
-
-Example: `IssueExplainer` — consumes the shared goqite queue, calls Ollama.
-
-::: info
-Full refactor to unified `TaskSpec[T]` is planned in [#161](https://github.com/thumbrise/autosolve/issues/161).
-:::
-
-## Adding a Preflight Instead?
-
-Same pattern, but implement `Preflight` interface and return `PreflightSpec`. Register in `NewPreflights()`. Preflights run once before workers start, and unknown errors are fatal (no Degraded mode).
+```go
+return join(
+    repos.Pack(...),
+    orgs.Pack(            // ← new partition dimension
+        auditScanner.TaskSpec(),
+    ),
+    globalTasks(...),
+)
+```
 
 ## Conventions
 

@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package workers
+package repository
 
 import (
 	"context"
@@ -22,8 +22,6 @@ import (
 
 	"github.com/thumbrise/autosolve/internal/config"
 	"github.com/thumbrise/autosolve/internal/domain/entities"
-	"github.com/thumbrise/autosolve/internal/domain/spec"
-	"github.com/thumbrise/autosolve/internal/domain/spec/tenants"
 	githubinfra "github.com/thumbrise/autosolve/internal/infrastructure/github"
 )
 
@@ -51,26 +49,26 @@ func NewIssuePoller(cfg *config.Github, githubClient *githubinfra.Client, logger
 	return &IssuePoller{cfg: cfg, githubClient: githubClient, logger: logger, syncRepo: syncRepo}
 }
 
-func (p *IssuePoller) TaskSpec() spec.WorkerSpec {
-	return spec.WorkerSpec{
+func (p *IssuePoller) TaskSpec() TaskSpec {
+	return TaskSpec{
 		Resource: "issue-poller",
 		Interval: p.cfg.Issues.ParseInterval,
 		Work:     p.Run,
 	}
 }
 
-func (p *IssuePoller) Run(ctx context.Context, tenant tenants.RepositoryTenant) error {
+func (p *IssuePoller) Run(ctx context.Context, partition Partition) error {
 	p.logger.DebugContext(ctx, "polling issues",
-		slog.String("owner", tenant.Owner),
-		slog.String("name", tenant.Name),
+		slog.String("owner", partition.Owner),
+		slog.String("name", partition.Name),
 	)
 
-	cursor, err := p.syncRepo.Cursor(ctx, tenant.RepositoryID)
+	cursor, err := p.syncRepo.Cursor(ctx, partition.RepositoryID)
 	if err != nil {
 		return fmt.Errorf("%w: %w", ErrReadCursor, err)
 	}
 
-	resp, err := p.githubClient.GetMostUpdatedIssues(ctx, p.buildRequest(tenant, cursor))
+	resp, err := p.githubClient.GetMostUpdatedIssues(ctx, p.buildRequest(partition, cursor))
 	if err != nil {
 		return fmt.Errorf("%w: %w", ErrFetchIssues, err)
 	}
@@ -87,7 +85,7 @@ func (p *IssuePoller) Run(ctx context.Context, tenant tenants.RepositoryTenant) 
 	// Empty page during catch-up: save cursor so page resets to 1.
 	// Without this, the poller re-fetches the same empty page forever.
 	if len(resp.Issues) == 0 {
-		if err := p.syncRepo.Save(ctx, tenant.RepositoryID, nil, nextCursor); err != nil {
+		if err := p.syncRepo.Save(ctx, partition.RepositoryID, nil, nextCursor); err != nil {
 			return fmt.Errorf("%w: %w", ErrSave, err)
 		}
 
@@ -97,7 +95,7 @@ func (p *IssuePoller) Run(ctx context.Context, tenant tenants.RepositoryTenant) 
 		return nil
 	}
 
-	if err := p.syncRepo.Save(ctx, tenant.RepositoryID, resp.Issues, nextCursor); err != nil {
+	if err := p.syncRepo.Save(ctx, partition.RepositoryID, resp.Issues, nextCursor); err != nil {
 		return fmt.Errorf("%w: %w", ErrSave, err)
 	}
 
@@ -106,10 +104,10 @@ func (p *IssuePoller) Run(ctx context.Context, tenant tenants.RepositoryTenant) 
 	return nil
 }
 
-func (p *IssuePoller) buildRequest(tenant tenants.RepositoryTenant, cursor entities.Cursor) githubinfra.Request {
+func (p *IssuePoller) buildRequest(partition Partition, cursor entities.Cursor) githubinfra.Request {
 	req := githubinfra.Request{
-		Owner:      tenant.Owner,
-		Repository: tenant.Name,
+		Owner:      partition.Owner,
+		Repository: partition.Name,
 		Cursor: githubinfra.Cursor{
 			Limit: 50,
 			Page:  cursor.Page,
