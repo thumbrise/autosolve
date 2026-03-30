@@ -42,12 +42,12 @@ task := longrun.NewIntervalTask("poll", 10*time.Second, poller.Run, []longrun.Tr
 // Runner with Baseline
 runner := longrun.NewRunner(longrun.RunnerOptions{
     Logger: logger,
-    Baseline: longrun.Baseline{
-        Node:     longrun.Policy{Backoff: longrun.Backoff(2*time.Second, 2*time.Minute)},
-        Service:  longrun.Policy{Backoff: longrun.Backoff(5*time.Second, 5*time.Minute)},
-        Degraded: &longrun.Policy{Backoff: longrun.Backoff(30*time.Second, 5*time.Minute)},
-        Classify: myClassifier,
-    },
+    Baseline: longrun.NewBaselineDegraded(
+        longrun.Policy{Backoff: longrun.Backoff(2*time.Second, 2*time.Minute)},   // Node
+        longrun.Policy{Backoff: longrun.Backoff(5*time.Second, 5*time.Minute)},   // Service
+        longrun.Policy{Backoff: longrun.Backoff(30*time.Second, 5*time.Minute)},  // Default (degraded)
+        myClassifier,
+    ),
 })
 runner.Add(task)
 err := runner.Wait(ctx)
@@ -73,11 +73,11 @@ Consecutive failures per rule. Successful tick resets all counters.
 
 Runner-level policies applied to every task. Tasks don't know about Baseline.
 
-Three error categories: **Node** (transport), **Service** (remote pressure), **Unknown** (unclassified). Unknown errors go to Degraded policy if set, or become permanent.
+Three error categories: **Node** (transport), **Service** (remote pressure), **Unknown** (unclassified). Unknown errors go to Default policy if set, or become permanent. Users can define custom categories.
 
 ### Degraded Mode
 
-Task-level, not Runner-level. Unknown error + Degraded policy → retry internally, never bubble up to Runner. Logs ERROR on every retry. Like `docker restart: always`.
+Task-level, not Runner-level. Unknown error + Default policy → retry internally, never bubble up to Runner. Logs ERROR on every retry. Like `docker restart: always`.
 
 ## Observability
 

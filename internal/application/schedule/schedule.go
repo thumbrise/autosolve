@@ -102,7 +102,7 @@ func (s *Scheduler) runWorkers(ctx context.Context, tasks []spec.Task) error {
 //   - apierr.WaitHinted with positive WaitDuration → Service + explicit wait
 //   - apierr.ServicePressure → Service
 //   - apierr.Retryable → Service
-//   - unknown → nil (let baseline handle as Unknown/Degraded)
+//   - unknown → nil (let baseline handle as Unknown/Default)
 func infraClassifier() longrun.ClassifierFunc {
 	return func(err error) *longrun.ErrorClass {
 		var wh apierr.WaitHinted
