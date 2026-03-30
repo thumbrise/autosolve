@@ -30,7 +30,7 @@ features:
     linkText: Read the Idea →
   - icon: 🔄
     title: Multi-Repo Polling
-    details: One daemon, many repositories. Each repo is an independent tenant with its own state, cursor, and rate limiting.
+    details: One daemon, many repositories. Each repo is an independent partition with its own state, cursor, and rate limiting.
   - icon: 🛡️
     title: Two-Phase Scheduler
     details: Preflights validate access before workers start. If validation fails — workers never launch. Fail fast, fail safe.
@@ -41,7 +41,7 @@ features:
     details: Traces, metrics, logs via OTLP/gRPC. Every task invocation is a span. Plug into Grafana, Jaeger, or anything OTEL-compatible.
   - icon: 🔌
     title: Extensible by Design
-    details: "Add a worker: implement one interface, register in DI, run codegen. The tenant system is ready for org-level and user-level scopes."
+    details: "Add a worker: implement one interface, register in DI, run codegen. The partition system is ready for org-level and user-level scopes."
     link: /contributing/adding-worker
     linkText: Add a worker →
 ---

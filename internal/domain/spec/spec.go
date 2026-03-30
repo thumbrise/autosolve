@@ -17,51 +17,41 @@ package spec
 import (
 	"context"
 	"time"
-
-	"github.com/thumbrise/autosolve/internal/domain/spec/tenants"
 )
 
-// PreflightSpec describes a one-shot task that must complete before workers start.
-// Defined by domain, consumed by Planner.
-//
-// Domain is a horse with blinders — it declares work, not retry strategy.
-// Retry is handled by Runner's Baseline (configured by Scheduler).
-//
-// Task naming convention: preflight:{Resource}:{owner}/{name}
-// Examples:
-//   - preflight:repository-validator:thumbrise/autosolve
-type PreflightSpec struct {
-	Resource string
-	Work     func(ctx context.Context, tenant tenants.RepositoryTenant) error
-}
+// OneShot marks a task as one-shot (execute once, not on interval).
+// Use in TaskSpec.Interval instead of zero — zero panics at plan time.
+const OneShot time.Duration = -1
 
-// WorkerSpec describes a long-running interval task scoped to a repository tenant.
-// Defined by domain, consumed by Planner.
-//
-// Domain is a horse with blinders — it declares work, not retry strategy.
-// Retry is handled by Runner's Baseline (configured by Scheduler).
-//
-// Task naming convention: worker:{Resource}:{owner}/{name}
-// Examples:
-//   - worker:issue-poller:thumbrise/autosolve
-//   - worker:comment-poller:thumbrise/otelext
-type WorkerSpec struct {
-	Resource string
-	Interval time.Duration
-	Work     func(ctx context.Context, tenant tenants.RepositoryTenant) error
-}
+// Phase determines when a task runs in the scheduler lifecycle.
+type Phase int
 
-// GlobalWorkerSpec describes a long-running interval task not scoped to a repository.
-// Unlike WorkerSpec, its Work function takes only context — no tenant parameter.
+const (
+	// PhaseWork is the default phase. Tasks run after all preflights complete.
+	// Zero-value — safe default.
+	PhaseWork Phase = iota
+
+	// PhasePreflight tasks run first. Environment may be incomplete
+	// (e.g. repository DB row may not exist yet).
+	PhasePreflight
+)
+
+// GlobalTaskSpec describes a task not scoped to any partition.
+// Compile-time guard: Work takes only context — cannot be passed to partition Pack().
 //
-// Defined by domain, consumed by Scheduler directly (not multiplied by Planner).
-// Full refactor to unified TaskSpec[T] deferred to #161.
-//
-// Task naming convention: worker:{Resource}
 // Examples:
-//   - worker:issue-explainer
-type GlobalWorkerSpec struct {
+//   - IssueExplainer: Resource="issue-explainer", Interval=2s, Work=poll queue
+type GlobalTaskSpec struct {
 	Resource string
-	Interval time.Duration
+	Interval time.Duration // OneShot | >0 | 0=panic
 	Work     func(ctx context.Context) error
+}
+
+// Task is a ready-to-schedule task produced by application layer.
+// Planner receives these, Scheduler executes them.
+type Task struct {
+	Name     string
+	Interval time.Duration
+	Phase    Phase
+	Work     func(context.Context) error
 }

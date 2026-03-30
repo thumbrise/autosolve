@@ -14,7 +14,7 @@ Have an idea? [Open an issue](https://github.com/thumbrise/autosolve/issues/new)
 These would change how the project works fundamentally.
 
 ### Plugin / Module System
-Each tenant type becomes a self-contained module with its own preflights, workers, and DAL. Register modules explicitly:
+Each partition type becomes a self-contained module with its own preflights, workers, and DAL. Register modules explicitly:
 ```go
 modules := []Module{repo.New(), analytics.New(), notifications.New()}
 ```
@@ -30,7 +30,7 @@ Configurable rules that decide when to launch an AI agent:
 ### Multi-Agent Support
 Different AI tools for different tasks. ra-aid for code fixes, a custom script for triage, Ollama for analysis. The executor layer should be pluggable.
 
-### Org-Level Tenants
+### Org-Level Partitions
 Today the unit of work is a repository. But some tasks make sense at the org level — cross-repo analytics, org-wide triage, dependency scanning.
 
 ## Smaller Ideas

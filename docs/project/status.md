@@ -38,7 +38,7 @@ These are the broad directions, not promises. Priorities shift based on real usa
 | **Result Publishing** | Post AI results back to GitHub (comments, PRs) | Next (#157) |
 | **Adaptive Polling** | Back off when repos are quiet, speed up when active | [#53](https://github.com/thumbrise/autosolve/issues/53) |
 | **longrun extraction** | Extract `pkg/longrun` into a standalone Go module | After API stabilizes |
-| **Module system** | Self-contained modules per tenant type | When second tenant appears |
+| **Module system** | Self-contained modules per partition type | When second partition appears |
 | **Comment polling** | Watch for `@bot` mentions in comments | Planned |
 
 ## Tech Stack

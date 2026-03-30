@@ -1,6 +1,6 @@
 ---
 title: "autosolve Devlog #5 — Two-Phase Scheduler"
-description: The commit that rewired autosolve from single-repo to multi-repo — Planner, Scheduler, Registry, RepoTenant, and the rate limiter RoundTripper.
+description: The commit that rewired autosolve from single-repo to multi-repo — Planner, Scheduler, Registry, RepoPartition, and the rate limiter RoundTripper.
 ---
 
 # #5 — Two-Phase Scheduler
@@ -21,25 +21,25 @@ Why one commit? Because the old architecture couldn't be incrementally morphed. 
 
 The original daemon polled one repository. Config had `owner` and `repo` fields. The worker had hardcoded references. Adding a second repo meant... duplicating everything?
 
-No. The question was: **what's the unit of work?** The answer became `RepoTenant` — a struct with `Owner`, `Name`, and `RepositoryID`. Every task receives a tenant and does its job for that specific repo.
+No. The question was: **what's the unit of work?** The answer became `RepoPartition` — a struct with `Owner`, `Name`, and `RepositoryID`. Every task receives a partition and does its job for that specific repo.
 
 ## The Design
 
 Three new concepts appeared in one commit:
 
 ### Planner
-Takes domain specs and multiplies them by configured repositories. Each repo gets a closure with a captured tenant:
+Takes domain specs and multiplies them by configured repositories. Each repo gets a closure with a captured partition:
 
 ```
 IssuePoller.TaskSpec() → WorkerSpec{Resource: "issue-poller", Work: ...}
 
 Planner.Workers() → [
-  WorkerUnit{Repo: "thumbrise/autosolve", Work: closure(RepoTenant)},
-  WorkerUnit{Repo: "thumbrise/otelext",   Work: closure(RepoTenant)},
+  WorkerUnit{Repo: "thumbrise/autosolve", Work: closure(RepoPartition)},
+  WorkerUnit{Repo: "thumbrise/otelext",   Work: closure(RepoPartition)},
 ]
 ```
 
-Planner is the only place that knows how to map config → tenants → closures. Domain code never knows how many repos exist.
+Planner is the only place that knows how to map config → partitions → closures. Domain code never knows how many repos exist.
 
 ### Scheduler
 Two-phase executor. Phase 1: preflights (all must pass). Phase 2: workers (long-running). If any preflight fails, workers never start.

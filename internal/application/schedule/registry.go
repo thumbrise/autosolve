@@ -17,51 +17,44 @@ package schedule
 import (
 	"github.com/google/wire"
 
-	"github.com/thumbrise/autosolve/internal/domain/spec/preflights"
-	"github.com/thumbrise/autosolve/internal/domain/spec/workers"
+	"github.com/thumbrise/autosolve/internal/domain/spec"
+	"github.com/thumbrise/autosolve/internal/domain/spec/global"
+	"github.com/thumbrise/autosolve/internal/domain/spec/repository"
 )
 
 var Bindings = wire.NewSet(
 	NewScheduler,
 	NewPlanner,
-	NewPreflights,
-	NewWorkers,
-	NewGlobalWorkers,
+	NewRepositoryTasks,
+	NewTasks,
 
-	preflights.NewRepositoryValidator,
-	workers.NewIssuePoller,
-	workers.NewOutboxRelay,
-	workers.NewIssueExplainer,
+	repository.NewValidator,
+	repository.NewIssuePoller,
+	repository.NewOutboxRelay,
+	global.NewIssueExplainer,
 )
 
-// NewPreflights registers all preflight tasks.
-// Add new preflights here when extending the system.
-func NewPreflights(
-	repoValidator *preflights.RepositoryValidator,
-) []Preflight {
-	return []Preflight{
-		repoValidator,
-	}
-}
-
-// NewWorkers registers all per-repository worker tasks.
-// Add new workers here when extending the system.
-func NewWorkers(
-	issuePoller *workers.IssuePoller,
-	outboxRelay *workers.OutboxRelay,
-) []Worker {
-	return []Worker{
-		issuePoller,
-		outboxRelay,
-	}
-}
-
-// NewGlobalWorkers registers all global worker tasks (not multiplied per repository).
-// Add new global workers here when extending the system.
-func NewGlobalWorkers(
-	issueExplainer *workers.IssueExplainer,
-) []GlobalWorker {
-	return []GlobalWorker{
-		issueExplainer,
-	}
+// NewTasks is the declarative task registry.
+// Read it as a manifest: what runs, under which partition.
+//
+// Adding a per-repo task:  one line in repos.Pack(...)
+// Adding a global task:    one line in global(...)
+// Adding a partition:         new XxxTasks type + new section here
+func NewTasks(
+	repos *RepositoryTasks,
+	repoValidator *repository.Validator,
+	issuePoller *repository.IssuePoller,
+	outboxRelay *repository.OutboxRelay,
+	issueExplainer *global.IssueExplainer,
+) []spec.Task {
+	return join(
+		repos.Pack(
+			Preflight(repoValidator.TaskSpec()),
+			issuePoller.TaskSpec(),
+			outboxRelay.TaskSpec(),
+		),
+		globalTasks(
+			issueExplainer.TaskSpec(),
+		),
+	)
 }

@@ -12,12 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package tenants
+package domain
 
-// RepositoryTenant identifies a repository as the current unit of work.
-// All per-repository tasks receive a RepositoryTenant to know which repository they operate on.
-type RepositoryTenant struct {
-	Owner        string
-	Name         string
-	RepositoryID int64
+import "context"
+
+// RepositoryStore is the domain contract for repository persistence.
+// Infrastructure implements it, domain and application consume it.
+type RepositoryStore interface {
+	Upsert(ctx context.Context, owner, name string) (int64, error)
+	GetIDByOwnerAndName(ctx context.Context, owner, name string) (int64, error)
 }

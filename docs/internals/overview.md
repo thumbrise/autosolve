@@ -12,11 +12,13 @@ config.yml
     ↓
 Bootstrap (load config → Wire DI → Kernel)
     ↓
+Registry DSL (declare tasks, multiply by partitions)
+    ↓
+Planner (split by Phase)
+    ↓
 Scheduler
   ├── Phase 1: Preflights (one-shot, all must pass)
-  └── Phase 2: Workers
-        ├── Per-repo workers (multiplied by Planner)
-        └── Global workers (shared resources, not per-repo)
+  └── Phase 2: Workers (interval tasks)
               ↓
           longrun.Runner (per-error retry, backoff, degraded mode)
 ```
@@ -29,15 +31,18 @@ internal/
 ├── bootstrap/          App init (Bootstrap → Wire → Kernel)
 ├── config/             Typed config structs (viper-backed)
 ├── domain/             Business logic
-│   └── spec/           Task specs + tenants
-│       ├── preflights/ RepositoryValidator
-│       ├── workers/    IssuePoller, OutboxRelay, IssueExplainer
-│       └── tenants/    RepoTenant
+│   ├── repositories.go RepositoryStore interface (domain contract)
+│   ├── entities/       Issue, Cursor, User
+│   └── spec/           Task specs
+│       ├── repository/ Partition, TaskSpec, Validator, IssuePoller, OutboxRelay
+│       └── global/     IssueExplainer
 ├── application/        Orchestration layer
-│   ├── schedule.go     Two-phase Scheduler
-│   ├── planner.go      Per-repo task planning
-│   ├── contracts.go    Preflight / Worker interfaces
-│   └── registry.go     Task registration
+│   └── schedule/
+│       ├── schedule.go     Two-phase Scheduler
+│       ├── planner.go      Phase-based task splitting
+│       ├── registry.go     Declarative task registry (DSL)
+│       ├── repository_tasks.go  Per-repo task multiplication
+│       └── global.go       Global task helpers
 └── infrastructure/     External dependencies
     ├── github/         GitHub API client + rate limiter
     ├── dal/            Data access (sqlc-generated)
@@ -49,13 +54,17 @@ pkg/
 
 ## Key Design Decisions
 
-### Domain Doesn't Know About Retry
+### Domain Is Naive
 
-Domain types (`RepositoryValidator`, `IssuePoller`) declare *what* to do via specs. They don't know about retry, backoff, or error classification. That's all handled by `longrun.Runner` through Baseline policies configured by `Scheduler`.
+Domain types (`RepositoryValidator`, `IssuePoller`) declare *what* to do via `TaskSpec`. They receive their partition as an honest function argument — no context injection, no lifecycle awareness. They don't know about retry, backoff, multi-repo multiplication, or error classification. That's all handled by the application layer.
 
-### Planner Owns the Multi-Repo Concept
+### Registry DSL Owns the Manifest
 
-`Planner` takes domain specs and multiplies them by configured repositories. Each repo gets its own closure with a captured `RepoTenant`. Domain code receives a tenant and does its job — it never knows how many repos exist.
+The registry (`NewTasks`) reads like a table of contents: what runs, under which partition, in which phase. `repos.Pack()` multiplies per-repo tasks. `globalTasks()` wraps partition-free tasks. `Preflight()` marks one-shot setup tasks. Adding a task = one line.
+
+### Partition Providers Own Multiplication
+
+`RepositoryTasks.Pack()` takes domain specs and multiplies them by configured repositories. Each repo gets its own closure with a captured partition. Domain code receives a `repository.Partition` and does its job — it never knows how many repos exist.
 
 ### Error Classification Pipeline
 

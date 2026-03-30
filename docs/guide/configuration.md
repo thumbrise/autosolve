@@ -64,7 +64,7 @@ otel:                           # OpenTelemetry (disabled by default)
 
 ## Multiple Repositories
 
-Just add more entries under `repositories`. Each repo becomes an independent tenant — its own preflight validation, its own polling cursor, its own state.
+Just add more entries under `repositories`. Each repo becomes an independent partition — its own preflight validation, its own polling cursor, its own state.
 
 ```yaml
 github:
