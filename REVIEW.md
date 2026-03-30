@@ -110,6 +110,39 @@ This produces a linear history grouped by topic, not by chronological order of d
 - **Milestones track releases** — assign issues to the milestone they ship in. An issue without a milestone is invisible to planning.
 - **Keep labels current** — if scope shifts during work (e.g. a feature becomes a refactor), update the labels. Stale labels erode trust in the backlog.
 
+## Structural review (Torvalds rigor)
+
+Normal diff review catches local bugs. Structural review catches architectural rot — God Objects, lying names, glossary drift — the kind of damage that compounds silently until the codebase is unmaintainable. Torvalds rejects patches for structural violations even when the code "works". We do the same.
+
+Applies to: any significant refactor, new module, or file that crosses a complexity threshold. Reviewer must check these **before** approving.
+
+### Hard thresholds — block merge
+
+| Metric | Threshold | Action |
+|---|---|---|
+| File LOC | > 400 | Split before merge |
+| Cyclomatic complexity | > 15 | Split or simplify before merge |
+| Private methods on one type | > 10 | God Object — extract subsystem |
+| Call depth from public entry | > 6 | Flatten or extract intermediate types |
+
+These are not guidelines — they are gates. A file at 410 LOC does not get a pass because "it's close". Split it.
+
+### Naming — no lies in the codebase
+
+- **Function name must describe what it does, not what you wish it did.** A function called `run` that actually restarts a loop is a lie. A method called `Sync` that deletes data is a lie. Lies compound — the next reader trusts the name, builds on wrong assumptions, and ships a bug. Rename before merge.
+- **One term, one meaning.** If "retry" means both "re-attempt a failed call" and "restart the entire loop from scratch", pick two different words. If "event" means both "domain event" and "outbox row", disambiguate. A term used with two meanings anywhere in code, comments, or docs must be fixed before merge.
+
+### Structural checks
+
+- **Martin metrics** — track OCP compliance and extension points per module. If adding a new variant (error category, worker type, output format) requires modifying existing code instead of adding a new file, the design is wrong.
+- **Glossary consistency** — every domain term must have exactly one meaning across code, comments, and docs. Drift is a bug. If a reviewer spots the same word used for two concepts — even in a comment — it blocks merge.
+- **God Object detection** — a type that accumulates unrelated private methods is not "well-encapsulated", it's a junk drawer. Signs: the type has methods that don't share state, or you can draw a line through the method list and get two independent groups. Extract subsystems into separate types or files. The struct stays thin — it delegates, not accumulates.
+- **Cognitive load** — if a reviewer needs to hold more than one subsystem in their head to understand a single method, the method is doing too much. If you can't explain a function's control flow in one sentence, split it.
+
+### Origin
+
+These rules were codified after a Torvalds-style structural review (PR #200) caught a God Object, a lying function name, and glossary drift — none of which surfaced in normal diff review. The lesson: diff review is necessary but not sufficient. Structural violations block merge just like a failing test.
+
 ## Pull requests
 
 PR description should reflect the overall scope of work in free-form prose. No code examples in the description — that's what the diff is for. Describe *what* and *why*, not *how*.
