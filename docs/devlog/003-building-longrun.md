@@ -41,7 +41,7 @@ Threw it all away and rebuilt with a clear model:
 type TransientRule struct {
     Err        error         // match via errors.Is or errors.As
     MaxRetries int           // per-error budget
-    Backoff    BackoffConfig // per-error curve
+    Backoff    BackoffFunc   // per-error curve (pure function)
 }
 ```
 

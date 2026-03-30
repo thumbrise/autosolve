@@ -11,7 +11,7 @@ Zero external dependencies beyond `golang.org/x/sync`.
 ## Task execution model
 ```
 Task.Wait(ctx)
-  └→ runWithPolicy (restart loop + backoff)
+  └→ restartLoop (restart loop + backoff)
        └→ runLoop (ticker or one-shot)
             └→ runOnce (single invocation ± timeout)
 ```
@@ -38,13 +38,9 @@ task := longrun.NewIntervalTask("healthcheck", 30*time.Second, check, nil)
 // Interval with per-error retry
 task := longrun.NewIntervalTask("poll", 10*time.Second, w.poll, []longrun.TransientRule{
     // GitHub API — might be under load, retry carefully
-    {Err: ErrFetchIssues, MaxRetries: 5, Backoff: longrun.BackoffConfig{
-        Initial: 2 * time.Second, Max: 60 * time.Second, Multiplier: 3.0,
-    }},
+    {Err: ErrFetchIssues, MaxRetries: 5, Backoff: longrun.ExponentialWith(2*time.Second, 60*time.Second, 3.0)},
     // Local DB — not loaded, retry aggressively
-    {Err: ErrStoreIssues, MaxRetries: longrun.UnlimitedRetries, Backoff: longrun.BackoffConfig{
-        Initial: 100 * time.Millisecond, Max: 2 * time.Second, Multiplier: 2.0,
-    }},
+    {Err: ErrStoreIssues, MaxRetries: longrun.UnlimitedRetries, Backoff: longrun.Exponential(100*time.Millisecond, 2*time.Second)},
 }, longrun.WithLogger(logger))
 ```
 
@@ -54,7 +50,7 @@ Each rule binds an error to its retry settings. Different errors can have differ
 type TransientRule struct {
     Err        any           // error sentinel (errors.Is) or pointer-to-type (errors.As)
     MaxRetries int           // 0 = default (3), -1 = unlimited
-    Backoff    BackoffConfig
+    Backoff    BackoffFunc   // pure function: (attempt) → duration
 }
 ```
 The `Err` field accepts two forms:
@@ -78,14 +74,16 @@ The package exposes low-level building blocks used internally by Task. They are 
 |---|---|
 | `Matcher` | Compiles an `any` error pattern into `errors.Is`/`errors.As` check |
 | `RuleTracker` | Per-rule retry budget with `OnFailure()`/`Reset()` |
-| `BackoffConfig` | Exponential backoff with `Duration(attempt)` and `Wait(ctx, attempt)` |
+| `BackoffFunc` | Pure function `(attempt) → duration`. Constructors: `Exponential`, `ExponentialWith`, `Constant` |
+| `AttemptStore` | Retry counter storage. Default: `MemoryStore`. Plug Redis/SQLite via `WithAttemptStore` |
 
 ## Options
 ```go
-longrun.WithTimeout(30 * time.Second)  // per-invocation timeout
-longrun.WithShutdown(server.Shutdown)  // graceful shutdown hook
-longrun.WithDelay(5 * time.Second)     // delay before first execution
-longrun.WithLogger(logger)             // custom slog.Logger
+longrun.WithTimeout(30 * time.Second)       // per-invocation timeout
+longrun.WithShutdown(server.Shutdown)       // graceful shutdown hook
+longrun.WithDelay(5 * time.Second)          // delay before first execution
+longrun.WithLogger(logger)                  // custom slog.Logger
+longrun.WithAttemptStore(myRedisStore)      // persistent retry state
 ```
 
 ### WithDelay
@@ -117,9 +115,9 @@ Baseline is a set of policies that Runner silently applies to every task. Tasks 
 runner := longrun.NewRunner(longrun.RunnerOptions{
     Logger: logger,
     Baseline: longrun.NewBaselineDegraded(
-        longrun.Policy{Backoff: longrun.Backoff(2*time.Second, 2*time.Minute)},   // Node
-        longrun.Policy{Backoff: longrun.Backoff(5*time.Second, 5*time.Minute)},   // Service
-        longrun.Policy{Backoff: longrun.Backoff(30*time.Second, 5*time.Minute)},  // Default (degraded)
+        longrun.Policy{Backoff: longrun.Exponential(2*time.Second, 2*time.Minute)},   // Node
+        longrun.Policy{Backoff: longrun.Exponential(5*time.Second, 5*time.Minute)},   // Service
+        longrun.Policy{Backoff: longrun.Exponential(30*time.Second, 5*time.Minute)},  // Default (degraded)
         infraClassifier,
     ),
 })
@@ -169,15 +167,19 @@ When `ClassifierFunc` returns `ErrorClass.WaitDuration > 0`, the task sleeps exa
 ## Package structure
 ```
 pkg/longrun/
-├── backoff.go       BackoffConfig, DefaultBackoff(), Backoff() constructor
+├── attempt_store.go AttemptStore interface, MemoryStore (default in-memory)
+├── backoff.go       BackoffFunc, Exponential, ExponentialWith, Constant, DefaultBackoff
 ├── baseline.go      Baseline, Policy, ErrorCategory, ClassifierFunc, ErrorClass
 ├── classify.go      Built-in transport classifier (net, DNS, timeout, EOF)
+├── failure_handler.go failureHandler interface, errSkip sentinel
 ├── matcher.go       Matcher — errors.Is / errors.As pattern matching
 ├── metrics.go       OTel metrics (degraded_total, degraded_duration, baseline_retry_total)
-├── tracker.go       RuleTracker — per-rule retry budget
-├── rule.go          TransientRule (user config) + ruleState (internal)
-├── option.go        Functional options (WithTimeout, WithDelay, ...)
-├── task.go          Task, NewOneShotTask, NewIntervalTask, handleFailure pipeline
+├── tracker.go       RuleTracker — standalone retry budget (legacy, still exported)
+├── rule.go          TransientRule (user config) + ruleFailureHandler
+├── option.go        Functional options (WithTimeout, WithDelay, WithAttemptStore, ...)
+├── task.go          Task struct, constructors, Wait, handleFailure (single loop)
+├── task_baseline.go baselineFailureHandler — classification pipeline + metrics
+├── task_loop.go     restartLoop, runLoop, runOnce
 ├── runner.go        Runner, NewRunner, Add (passes Baseline), Wait, LIFO shutdown
 ├── *_test.go        Blackbox tests (package longrun_test)
 ├── README.md
@@ -213,9 +215,11 @@ Baseline retries emit OTel metrics (no-op when SDK is not configured):
 Enables alerting: "task X in degraded for 10 minutes".
 
 ## Design decisions
-- **Baseline + TransientRules** — two layers of retry. Baseline is invisible protection configured on Runner (transport + classifier + degraded). TransientRules are explicit per-task overrides for specific errors. Baseline runs after rules — if no rule matches, baseline classifies.
+- **Unified failure pipeline** — TransientRules and Baseline are both `failureHandler` implementations. Task iterates a flat `[]failureHandler` list: rules first, baseline last. No branching, no special cases.
 - **Transient errors whitelist** — empty rules = all errors permanent (unless baseline is configured). Lower layers provide sentinel errors, orchestrator decides what to retry.
-- **Per-error retry** — different errors can have different MaxRetries and BackoffConfig. Careful retry for loaded external APIs, aggressive retry for local resources.
+- **Per-error retry** — different errors can have different MaxRetries and BackoffFunc. Careful retry for loaded external APIs, aggressive retry for local resources.
+- **BackoffFunc is a pure function** — `(attempt) → duration`. No struct, no methods. `Exponential`, `Constant` are constructors, but any `func(int) time.Duration` works. Open/Closed at maximum.
+- **AttemptStore** — retry counters abstracted behind an interface. Default: in-memory. Users can plug Redis/SQLite for persistent backoff state across restarts.
 - **Own backoff** — `math.Pow` based, no external dependencies.
 - **Signals are not the package's responsibility** — Runner accepts ctx, caller handles signals.
 - **Shutdown after all tasks stop** — shutdown hooks run after `grp.Wait()`, never concurrently with running tasks.
