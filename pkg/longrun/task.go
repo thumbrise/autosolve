@@ -239,7 +239,7 @@ func (t *Task) handleBaselineFailure(ctx context.Context, err error) error {
 	class, policy := t.classifyWithBaseline(err)
 
 	if policy == nil {
-		// Unknown + no Degraded → permanent error.
+		// Unknown + no Default → permanent error.
 		return err
 	}
 

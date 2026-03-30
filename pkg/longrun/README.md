@@ -116,13 +116,18 @@ Baseline is a set of policies that Runner silently applies to every task. Tasks 
 ```go
 runner := longrun.NewRunner(longrun.RunnerOptions{
     Logger: logger,
-    Baseline: longrun.Baseline{
-        Node:    longrun.Policy{Backoff: longrun.Backoff(2*time.Second, 2*time.Minute)},
-        Service: longrun.Policy{Backoff: longrun.Backoff(5*time.Second, 5*time.Minute)},
-        Degraded: &longrun.Policy{Backoff: longrun.Backoff(30*time.Second, 5*time.Minute)},
-        Classify: infraClassifier,
-    },
+    Baseline: longrun.NewBaselineDegraded(
+        longrun.Policy{Backoff: longrun.Backoff(2*time.Second, 2*time.Minute)},   // Node
+        longrun.Policy{Backoff: longrun.Backoff(5*time.Second, 5*time.Minute)},   // Service
+        longrun.Policy{Backoff: longrun.Backoff(30*time.Second, 5*time.Minute)},  // Default (degraded)
+        infraClassifier,
+    ),
 })
+```
+
+Users can define custom error categories beyond the predefined ones:
+```go
+const CategoryDatabase longrun.ErrorCategory = 10
 ```
 
 ### Error categories
@@ -131,7 +136,7 @@ runner := longrun.NewRunner(longrun.RunnerOptions{
 |----------|---------|--------|
 | **Node** | Transport-level failure (TCP, DNS, TLS, timeout) | Aggressive retry — network will recover |
 | **Service** | Remote service under pressure (rate limit, 5xx) | Gentle retry — don't kick them while they're down |
-| **Unknown** | Not recognized by any classifier | Degraded policy (if set) or permanent error |
+| **Unknown** | Not recognized by any classifier | Default policy (if set) or permanent error |
 
 ### Classification pipeline
 
@@ -141,21 +146,21 @@ err from work()
   ├─ [1] Built-in transport classify (net.OpError, DNS, timeout, EOF → Node)
   ├─ [2] User classifier via Baseline.Classify (apierr interfaces → Service)
   └─ [3] Not classified → Unknown
-         Degraded != nil → retry with loud ERROR log
-         Degraded == nil → permanent error
+         Default != nil → retry with loud ERROR log
+         Default == nil → permanent error
 ```
 
 Built-in transport classifier depends only on stdlib. User classifier is application-level (e.g. checks `Retryable`, `WaitHinted`, `ServicePressure` interfaces on errors).
 
 ### Degraded mode
 
-Task-level behavior, not Runner-level. When a task gets an unknown error and Degraded policy is set:
-- Retries internally with Degraded backoff
+Task-level behavior, not Runner-level. When a task gets an unknown error and Default policy is set:
+- Retries internally with Default backoff
 - Never returns the error to Runner — errgroup contract preserved
 - Logs at ERROR level on every retry
 - Like Docker `restart: always`
 
-When Degraded is nil (e.g. preflights), unknown errors are permanent — crash early, fix your config.
+When Default is nil (e.g. preflights), unknown errors are permanent — crash early, fix your config.
 
 ### Wait duration override
 
