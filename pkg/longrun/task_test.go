@@ -350,6 +350,86 @@ func TestBaseline_OutOfRangeCategory_NoPanic(t *testing.T) {
 	}
 }
 
+// --- baseline: Policy.Retries budget ---
+
+func TestBaseline_RetriesExhausted_ReturnsPermanent(t *testing.T) {
+	// Regression test: baselineOption must respect Policy.Retries > 0.
+	// Without the budget check, baseline retries forever.
+	var calls int32
+
+	runner := longrun.NewRunner(longrun.RunnerOptions{
+		Baseline: longrun.NewBaselineDegraded(
+			longrun.Policy{Retries: 2, Backoff: longrun.Constant(1 * time.Millisecond)},
+			longrun.Policy{Retries: 2, Backoff: longrun.Constant(1 * time.Millisecond)},
+			longrun.Policy{Retries: 2, Backoff: longrun.Constant(1 * time.Millisecond)},
+			nil,
+		),
+	})
+
+	runner.Add(longrun.NewOneShotTask("test", func(context.Context) error {
+		atomic.AddInt32(&calls, 1)
+
+		return errors.New("always fails")
+	}, nil))
+
+	err := runner.Wait(context.Background())
+	if err == nil {
+		t.Fatal("expected permanent error after baseline retries exhausted")
+	}
+
+	// 1 initial + 2 retries = 3 calls.
+	if n := atomic.LoadInt32(&calls); n != 3 {
+		t.Fatalf("expected 3 calls (1 + 2 retries), got %d", n)
+	}
+}
+
+// --- middleware ordering: task rules have priority over baseline ---
+
+func TestBaseline_TaskRuleHasPriorityOverBaseline(t *testing.T) {
+	// Task-level retry.On should handle matched errors before baseline sees them.
+	// errSentinel matches the task rule → retried with task backoff.
+	// Baseline should never classify errSentinel.
+	var calls int32
+
+	runner := longrun.NewRunner(longrun.RunnerOptions{
+		Baseline: longrun.NewBaselineDegraded(
+			longrun.Policy{Backoff: longrun.Constant(50 * time.Millisecond)}, // slow — would blow timeout
+			longrun.Policy{Backoff: longrun.Constant(50 * time.Millisecond)},
+			longrun.Policy{Backoff: longrun.Constant(50 * time.Millisecond)},
+			nil,
+		),
+	})
+
+	runner.Add(longrun.NewOneShotTask("test", func(context.Context) error {
+		n := atomic.AddInt32(&calls, 1)
+		if n < 3 {
+			return errSentinel
+		}
+
+		return nil
+	}, []resilience.Option{
+		retry.On(errSentinel, 5, backoff.Constant(1*time.Millisecond)), // fast — task rule
+	}))
+
+	start := time.Now()
+	err := runner.Wait(context.Background())
+	elapsed := time.Since(start)
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if n := atomic.LoadInt32(&calls); n != 3 {
+		t.Fatalf("expected 3 calls, got %d", n)
+	}
+
+	// If baseline handled it (50ms backoff), elapsed would be ~100ms+.
+	// Task rule uses 1ms backoff, so elapsed should be well under 50ms.
+	if elapsed > 50*time.Millisecond {
+		t.Fatalf("baseline handled the error instead of task rule: elapsed %v", elapsed)
+	}
+}
+
 // --- timeout ---
 
 func TestOneShotTask_WithTimeout(t *testing.T) {
