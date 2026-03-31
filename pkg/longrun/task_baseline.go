@@ -87,10 +87,12 @@ func (h *baselineFailureHandler) policyFor(cat ErrorCategory) *Policy {
 
 // retry retries using a baseline Policy.
 func (h *baselineFailureHandler) retry(ctx context.Context, err error, p *Policy, category ErrorCategory, waitOverride time.Duration, isDegraded bool) error {
-	//nolint:godox // retry budget tracking deferred — baseline policies retry indefinitely for now (zero-value = unlimited).
-	// TODO: track per-policy retry budget (Policy.Retries). See #121.
 	key := "baseline:" + categoryName(category)
 	attempt := h.attempts.Increment(key)
+
+	if p.Retries > 0 && h.attempts.Get(key) >= p.Retries {
+		return err // budget exhausted
+	}
 
 	categoryLabel := categoryName(category)
 
