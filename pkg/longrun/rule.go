@@ -18,6 +18,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"reflect"
 )
 
 // TransientRule binds an error to its retry settings.
@@ -48,6 +49,20 @@ type TransientRule struct {
 	MaxRetries int
 
 	Backoff BackoffFunc
+
+	// Key is the stable identifier for AttemptStore persistence.
+	//
+	// For sentinel errors (errors.New), Key is auto-derived from the error
+	// message — safe to leave empty.
+	//
+	// For typed nil pointers (*net.OpError)(nil), Key MUST be set explicitly —
+	// the error message is "<nil>" which is not a stable identifier.
+	// Construction panics if Key is empty for a typed nil pointer.
+	//
+	// When using a persistent AttemptStore (Redis, SQLite), Key must be
+	// stable across deployments. Reordering rules is safe as long as
+	// each rule keeps its Key.
+	Key string
 }
 
 // TransientGroup creates N rules with identical MaxRetries and BackoffFunc.
@@ -119,7 +134,7 @@ func (h *ruleFailureHandler) Handle(ctx context.Context, err error) error {
 }
 
 // buildRuleHandlers validates rules and compiles them into failureHandlers.
-// Panics on invalid rules (nil Err, unsupported Err type, nil Backoff).
+// Panics on invalid rules (nil Err, unsupported Err type, nil Backoff, missing Key for typed nil pointer).
 func buildRuleHandlers(rules []TransientRule, attempts AttemptStore, logger *slog.Logger) []failureHandler {
 	handlers := make([]failureHandler, len(rules))
 
@@ -131,11 +146,36 @@ func buildRuleHandlers(rules []TransientRule, attempts AttemptStore, logger *slo
 		handlers[i] = &ruleFailureHandler{
 			rule:     r,
 			matcher:  NewMatcher(r.Err), // panics on nil or unsupported type
-			key:      fmt.Sprintf("rule:%d", i),
+			key:      resolveRuleKey(r),
 			attempts: attempts,
 			logger:   logger,
 		}
 	}
 
 	return handlers
+}
+
+// resolveRuleKey computes a stable AttemptStore key for a TransientRule.
+//
+// Priority:
+//  1. Explicit Key field → use as-is.
+//  2. Sentinel error (non-pointer) → derive from error message.
+//  3. Typed nil pointer (*T)(nil) → panic, Key must be set explicitly.
+func resolveRuleKey(r TransientRule) string {
+	if r.Key != "" {
+		return "rule:" + r.Key
+	}
+
+	// Typed nil pointer — no stable string representation.
+	rv := reflect.ValueOf(r.Err)
+	if rv.Kind() == reflect.Ptr && rv.IsNil() {
+		panic(fmt.Sprintf(
+			"longrun: TransientRule.Key must be set for typed nil pointer errors (got %T); "+
+				"sentinel errors derive Key automatically from the error message",
+			r.Err,
+		))
+	}
+
+	// Sentinel error — use error message as stable key.
+	return "rule:" + r.Err.Error()
 }
