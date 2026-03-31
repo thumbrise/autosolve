@@ -38,16 +38,7 @@ type Task struct {
 	rules    []ruleState
 	baseline *Baseline // set by Runner.Add, nil when standalone
 	logger   *slog.Logger
-
-	// baselineAttempts tracks consecutive retry attempts per baseline category.
-	// Keyed by ErrorCategory — supports both predefined and user-defined categories.
-	// Used for exponential backoff: attempt N → Backoff(N).
-	// Reset to zero on successful tick (hadProgress=true) together with rule trackers.
-	//
-	// Example: WiFi drops, 3 consecutive Node errors:
-	//   attempt 0 → 2s, attempt 1 → 4s, attempt 2 → 8s
-	//   WiFi recovers, tick succeeds → all counters reset to 0.
-	baselineAttempts map[ErrorCategory]int
+	attempts AttemptStore
 }
 
 // NewOneShotTask creates a task that executes once.
@@ -59,7 +50,7 @@ type Task struct {
 // is never reset mid-execution for one-shot tasks.
 //
 // Panics if work is nil.
-// Panics if any rule has nil Err, unsupported Err type, or Backoff.Initial <= 0.
+// Panics if any rule has nil Err, unsupported Err type, or nil Backoff.
 func NewOneShotTask(name string, work WorkFunc, rules []TransientRule, opts ...Option) *Task {
 	return newTask(name, 0, work, rules, opts)
 }
@@ -75,7 +66,7 @@ func NewOneShotTask(name string, work WorkFunc, rules []TransientRule, opts ...O
 // separated by successful ticks never accumulate toward MaxRetries.
 //
 // Panics if work is nil or interval <= 0.
-// Panics if any rule has nil Err, unsupported Err type, or Backoff.Initial <= 0.
+// Panics if any rule has nil Err, unsupported Err type, or nil Backoff.
 func NewIntervalTask(name string, interval time.Duration, work WorkFunc, rules []TransientRule, opts ...Option) *Task {
 	if interval <= 0 {
 		panic("longrun.NewIntervalTask: interval must be > 0")
@@ -116,16 +107,21 @@ func newTask(name string, interval time.Duration, work WorkFunc, rules []Transie
 		ruleStates = buildRuleStates(rules)
 	}
 
+	store := cfg.attemptStore
+	if store == nil {
+		store = NewMemoryStore()
+	}
+
 	return &Task{
-		name:             name,
-		work:             work,
-		shutdown:         cfg.shutdown,
-		interval:         interval,
-		timeout:          cfg.timeout,
-		delay:            cfg.delay,
-		rules:            ruleStates,
-		logger:           logger,
-		baselineAttempts: make(map[ErrorCategory]int),
+		name:     name,
+		work:     work,
+		shutdown: cfg.shutdown,
+		interval: interval,
+		timeout:  cfg.timeout,
+		delay:    cfg.delay,
+		rules:    ruleStates,
+		logger:   logger,
+		attempts: store,
 	}
 }
 
@@ -185,13 +181,15 @@ func (t *Task) handleFailure(ctx context.Context, err error, hadProgress bool) e
 	return t.handleBaselineFailure(ctx, err)
 }
 
-// retryWithRule retries using a per-task TransientRule (legacy path).
+// retryWithRule retries using a per-task TransientRule.
 func (t *Task) retryWithRule(ctx context.Context, err error, rs *ruleState) error {
-	attempt, canRetry := rs.tracker.OnFailure()
-	if !canRetry {
+	maxRetries := resolveMaxRetries(rs.rule.MaxRetries)
+	attempt := t.attempts.Increment(rs.key)
+
+	if maxRetries != UnlimitedRetries && attempt >= maxRetries {
 		t.logger.ErrorContext(ctx, "max retries reached",
 			slog.Any("error", err),
-			slog.Int("max_retries", rs.tracker.Max()),
+			slog.Int("max_retries", maxRetries),
 		)
 
 		return err
@@ -221,9 +219,5 @@ func (t *Task) findMatchingRule(err error) *ruleState {
 }
 
 func (t *Task) resetAllRules() {
-	for i := range t.rules {
-		t.rules[i].tracker.Reset()
-	}
-
-	t.baselineAttempts = make(map[ErrorCategory]int)
+	t.attempts.Reset()
 }

@@ -63,7 +63,7 @@ func TestExponential_NoMaxNoCap(t *testing.T) {
 func TestConstant_AlwaysSameDuration(t *testing.T) {
 	backoff := longrun.Constant(5 * time.Second)
 
-	for attempt := 0; attempt < 10; attempt++ {
+	for attempt := range 10 {
 		if d := backoff(attempt); d != 5*time.Second {
 			t.Fatalf("attempt %d: expected 5s, got %v", attempt, d)
 		}

@@ -144,4 +144,3 @@ func NewBaselineDegraded(node, service, defaultPolicy Policy, classify Classifie
 func (b *Baseline) isZero() bool {
 	return len(b.Policies) == 0 && b.Default == nil && b.Classify == nil
 }
-
