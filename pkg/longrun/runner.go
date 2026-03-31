@@ -79,8 +79,9 @@ func (r *Runner) Add(task *Task) {
 
 	if !r.opts.Baseline.isZero() {
 		// Baseline is prepended — outermost middleware. Task-level retry Options
-		// are closer to fn and get first chance to match errors. Baseline only
-		// sees errors that no task-level rule handled.
+		// are closer to fn and get first chance to match errors. Baseline
+		// catches any error that propagates past task-level middleware
+		// (unmatched errors or errors where task-level budget was exhausted).
 		task.resOpts = append([]resilience.Option{baselineOption(&r.opts.Baseline, task.name, task.logger)}, task.resOpts...)
 	}
 
