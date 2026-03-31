@@ -78,7 +78,7 @@ func TransientGroup(maxRetries int, backoff BackoffFunc, errs ...error) []Transi
 type ruleState struct {
 	rule    TransientRule
 	matcher Matcher
-	tracker *RuleTracker
+	key     string // opaque key for AttemptStore, e.g. "rule:0", "rule:1"
 }
 
 // buildRuleStates validates rules and compiles them into ruleStates.
@@ -94,7 +94,7 @@ func buildRuleStates(rules []TransientRule) []ruleState {
 		states[i] = ruleState{
 			rule:    r,
 			matcher: NewMatcher(r.Err), // panics on nil or unsupported type
-			tracker: NewRuleTracker(r.MaxRetries),
+			key:     fmt.Sprintf("rule:%d", i),
 		}
 	}
 

@@ -27,10 +27,11 @@ type ShutdownFunc func(ctx context.Context) error
 type Option func(*taskConfig)
 
 type taskConfig struct {
-	timeout  time.Duration
-	delay    time.Duration
-	shutdown ShutdownFunc
-	logger   *slog.Logger
+	timeout      time.Duration
+	delay        time.Duration
+	shutdown     ShutdownFunc
+	logger       *slog.Logger
+	attemptStore AttemptStore
 }
 
 // WithTimeout sets a per-invocation timeout for the work function.
@@ -63,5 +64,15 @@ func WithShutdown(fn ShutdownFunc) Option {
 func WithLogger(l *slog.Logger) Option {
 	return func(c *taskConfig) {
 		c.logger = l
+	}
+}
+
+// WithAttemptStore sets a custom AttemptStore for retry state persistence.
+// Default: in-memory store (state lost on process restart).
+// Use a persistent implementation (Redis, SQLite) to survive restarts
+// without losing backoff progress.
+func WithAttemptStore(store AttemptStore) Option {
+	return func(c *taskConfig) {
+		c.attemptStore = store
 	}
 }

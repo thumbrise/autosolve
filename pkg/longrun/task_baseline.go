@@ -83,8 +83,8 @@ func (t *Task) policyFor(cat ErrorCategory) *Policy {
 func (t *Task) retryWithPolicy(ctx context.Context, err error, p *Policy, category ErrorCategory, waitOverride time.Duration, isDegraded bool) error {
 	//nolint:godox // retry budget tracking deferred — baseline policies retry indefinitely for now (zero-value = unlimited).
 	// TODO: track per-policy retry budget (Policy.Retries). See #121.
-	attempt := t.baselineAttempts[category]
-	t.baselineAttempts[category]++
+	key := "baseline:" + categoryName(category)
+	attempt := t.attempts.Increment(key)
 
 	categoryLabel := categoryName(category)
 
@@ -123,13 +123,14 @@ func (t *Task) retryWithPolicy(ctx context.Context, err error, p *Policy, catego
 	}
 
 	start := time.Now()
-	result := sleepCtx(ctx, waitDur)
+
+	sleepCtx(ctx, waitDur)
 
 	if isDegraded {
 		metricDegradedDuration.Record(ctx, time.Since(start).Seconds(), metric.WithAttributes(taskAttr))
 	}
 
-	return result
+	return nil
 }
 
 // categoryName returns a human-readable label for metrics and logs.
