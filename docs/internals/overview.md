@@ -87,4 +87,4 @@ All dependencies are wired via Google Wire. Constructors are pure: accept deps, 
 
 - [Two-Phase Scheduler](./two-phase) — how preflights and workers interact
 - [Error Handling & Retry](./error-handling) — the full retry pipeline
-- [longrun Package](./longrun) — the standalone task orchestration library
+- [longrun Package](./longrun/index.md) — the standalone task orchestration library
