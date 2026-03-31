@@ -19,6 +19,7 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/thumbrise/autosolve/pkg/resilience"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -76,7 +77,10 @@ func (r *Runner) Add(task *Task) {
 	}
 
 	if !r.opts.Baseline.isZero() {
-		task.resOpts = append(task.resOpts, baselineOption(&r.opts.Baseline, task.name, task.logger))
+		// Baseline is prepended — outermost middleware. Task-level retry Options
+		// are closer to fn and get first chance to match errors. Baseline only
+		// sees errors that no task-level rule handled.
+		task.resOpts = append([]resilience.Option{baselineOption(&r.opts.Baseline, task.name, task.logger)}, task.resOpts...)
 	}
 
 	r.tasks = append(r.tasks, task)
