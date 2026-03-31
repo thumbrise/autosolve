@@ -21,13 +21,22 @@ import (
 
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/codes"
+
+	"github.com/thumbrise/autosolve/pkg/resilience"
 )
 
-// restartLoop implements the restart loop with backoff.
+// restartLoop implements the execution loop.
+//
+// One-shot tasks: resilience.Do handles retry via Options, returns on
+// success or permanent error.
+//
+// Interval tasks: run immediately, then on every tick. Each invocation
+// is wrapped with resilience.Do — transient errors retry with backoff,
+// permanent errors kill the task.
 //
 //	Task.Wait(ctx)
-//	  └→ restartLoop (restart loop + backoff)
-//	       └→ runLoop (ticker or one-shot)
+//	  └→ restartLoop
+//	       └→ resilience.Do(ctx, runOnce, resOpts...)
 //	            └→ runOnce (single invocation ± timeout)
 func (t *Task) restartLoop(ctx context.Context) error {
 	// Delay before first execution (if configured). Runs once, not on every retry.
@@ -44,48 +53,37 @@ func (t *Task) restartLoop(ctx context.Context) error {
 		}
 	}
 
-	for {
-		err, hadProgress := t.runLoop(ctx)
-
-		// --- success path ---
-		if err == nil {
-			t.attempts.Reset()
-
-			return nil
-		}
-
-		// Context done — not a task error.
-		if ctx.Err() != nil {
-			return nil
-		}
-
-		// --- failure path ---
-		if retryErr := t.handleFailure(ctx, err, hadProgress); retryErr != nil {
-			return retryErr
-		}
+	if t.interval <= 0 {
+		return t.suppressCtxErr(ctx, t.doOnce(ctx))
 	}
+
+	return t.suppressCtxErr(ctx, t.doInterval(ctx))
 }
 
-// runLoop runs the ticker loop (interval > 0) or a single invocation (one-shot).
-// The second return value (hadProgress) is true when at least one invocation
-// of the work function succeeded before the loop returned an error.
-//
-// Interval mode always runs work immediately, then on every tick. When a transient
-// error triggers a retry via handleFailure, restartLoop re-enters runLoop from
-// scratch: work runs immediately again, then a new ticker starts. This means the
-// ticker resets on each retry — the interval between the immediate retry and the
-// next tick is a full interval period, not the remainder of the previous one.
-func (t *Task) runLoop(ctx context.Context) (error, bool) {
-	if t.interval <= 0 {
-		return t.runOnce(ctx), false
+// suppressCtxErr returns nil when the error is caused by context cancellation.
+// Context cancellation is not a task error — it's an external signal.
+func (t *Task) suppressCtxErr(ctx context.Context, err error) error {
+	if err != nil && ctx.Err() != nil {
+		return nil //nolint:nilerr // special case, function name reflect it
 	}
 
-	// Interval mode: run immediately, then on every tick.
-	if err := t.runOnce(ctx); err != nil {
-		return err, false
-	}
+	return err
+}
 
-	hadProgress := true
+// doOnce executes the work function once with resilience options.
+// Used for one-shot tasks.
+func (t *Task) doOnce(ctx context.Context) error {
+	return resilience.Do(ctx, t.runOnce, t.resOpts...)
+}
+
+// doInterval runs the ticker loop. Each tick is wrapped with resilience.Do —
+// transient errors retry with backoff, permanent errors kill the task.
+// On success, the loop waits for the next tick.
+func (t *Task) doInterval(ctx context.Context) error {
+	// Run immediately before starting the ticker.
+	if err := resilience.Do(ctx, t.runOnce, t.resOpts...); err != nil {
+		return err
+	}
 
 	ticker := time.NewTicker(t.interval)
 	defer ticker.Stop()
@@ -93,13 +91,11 @@ func (t *Task) runLoop(ctx context.Context) (error, bool) {
 	for {
 		select {
 		case <-ctx.Done():
-			return nil, hadProgress
+			return nil
 		case <-ticker.C:
-			if err := t.runOnce(ctx); err != nil {
-				return err, hadProgress
+			if err := resilience.Do(ctx, t.runOnce, t.resOpts...); err != nil {
+				return err
 			}
-
-			hadProgress = true
 		}
 	}
 }
