@@ -80,6 +80,7 @@ export default defineConfig({
             {text: '#9 — The First Visible Output', link: '/devlog/009-first-visible-output'},
             {text: '#10 — The Partition Refactor', link: '/devlog/010-partition-based-dsl'},
             {text: '#11 — Killing the God Object', link: '/devlog/011-longrun-god-object'},
+            {text: '#12 — The Do Primitive', link: '/devlog/012-resilience-do-vision'},
           ],
         },
       ],
