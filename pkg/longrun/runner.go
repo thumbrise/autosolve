@@ -66,8 +66,8 @@ func NewRunner(opts RunnerOptions) *Runner {
 
 // Add registers a task for concurrent execution.
 // Panics if the same task is added twice.
-// If Runner has a Baseline configured, it is appended as a failureHandler
-// after the task's own TransientRule handlers.
+// If Runner has a Baseline configured, it is appended as a resilience Option
+// after the task's own retry Options.
 func (r *Runner) Add(task *Task) {
 	for _, t := range r.tasks {
 		if t == task {
@@ -76,12 +76,7 @@ func (r *Runner) Add(task *Task) {
 	}
 
 	if !r.opts.Baseline.isZero() {
-		task.handlers = append(task.handlers, &baselineFailureHandler{
-			baseline: &r.opts.Baseline,
-			taskName: task.name,
-			attempts: task.attempts,
-			logger:   task.logger,
-		})
+		task.resOpts = append(task.resOpts, baselineOption(&r.opts.Baseline, task.name, task.logger))
 	}
 
 	r.tasks = append(r.tasks, task)
