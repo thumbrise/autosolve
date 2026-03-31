@@ -30,10 +30,10 @@ import (
 // classification pipeline. It classifies errors via transport + user classifier,
 // selects a Policy, and retries with the appropriate backoff.
 //
-// This Option sits after task-level retry Options in the middleware chain.
-// If a task-level retry.On already handled the error (retried and succeeded,
-// or retried and exhausted budget), baseline never sees it.
-// Baseline only sees errors that no task-level rule matched.
+// This Option sits before task-level retry Options in the middleware chain
+// (outermost). Task-level retry.On options are closer to fn and get first
+// chance to match errors. Baseline only sees errors that no task-level rule
+// handled.
 func baselineOption(baseline *Baseline, taskName string, logger *slog.Logger) resilience.Option {
 	return resilience.NewOption(func(next resilience.Func) resilience.Func {
 		var attempt int
@@ -51,74 +51,91 @@ func baselineOption(baseline *Baseline, taskName string, logger *slog.Logger) re
 					return ctx.Err()
 				}
 
-				class, policy := classifyError(baseline, err)
-				if policy == nil {
-					// Unknown + no Default → permanent.
-					return err
+				retryErr := baselineRetryDecision(ctx, baseline, taskName, err, attempt, logger)
+				if retryErr != nil {
+					return retryErr
 				}
-
-				// Budget check: Policy.Retries > 0 → exact limit.
-				// Policy.Retries <= 0 → unlimited (baseline default).
-				if policy.Retries > 0 && attempt >= policy.Retries {
-					logger.ErrorContext(ctx, "baseline: max retries reached",
-						slog.Any("error", err),
-						slog.Int("max_retries", policy.Retries),
-					)
-
-					return err
-				}
-
-				_, knownCategory := baseline.Policies[class.Category]
-				isDegraded := !knownCategory
-
-				if isDegraded {
-					logger.ErrorContext(ctx, "DEGRADED: unknown error, retrying with degraded policy",
-						slog.Any("error", err),
-					)
-				}
-
-				catLabel := categoryName(class.Category)
-
-				level := slog.LevelInfo
-				if isDegraded {
-					level = slog.LevelError
-				}
-
-				var waitDur time.Duration
-				if class.WaitDuration > 0 {
-					waitDur = class.WaitDuration
-				} else {
-					waitDur = policy.Backoff(attempt)
-				}
-
-				start := time.Now()
-
-				logger.Log(ctx, level, "retrying with baseline policy",
-					slog.Any("error", err),
-					slog.String("category", catLabel),
-					slog.Any("backoff", waitDur),
-				)
 
 				attempt++
-
-				sleepCtx(ctx, waitDur)
 
 				if ctx.Err() != nil {
 					return ctx.Err()
 				}
-
-				taskAttr := attribute.String("task", taskName)
-				categoryAttr := attribute.String("category", catLabel)
-
-				metricBaselineRetryTotal.Add(ctx, 1, metric.WithAttributes(taskAttr, categoryAttr))
-
-				if isDegraded {
-					metricDegradedTotal.Add(ctx, 1, metric.WithAttributes(taskAttr))
-					metricDegradedDuration.Record(ctx, time.Since(start).Seconds(), metric.WithAttributes(taskAttr))
-				}
 			}
 		}
 	})
+}
+
+// baselineRetryDecision classifies the error and executes the retry: sleep + log + metrics.
+// Returns nil if the caller should retry, or the error to stop.
+func baselineRetryDecision(ctx context.Context, baseline *Baseline, taskName string, err error, attempt int, logger *slog.Logger) error {
+	class, policy := classifyError(baseline, err)
+	if policy == nil {
+		return err
+	}
+
+	if policy.Retries > 0 && attempt >= policy.Retries {
+		logger.ErrorContext(ctx, "baseline: max retries reached",
+			slog.Any("error", err),
+			slog.Int("max_retries", policy.Retries),
+		)
+
+		return err
+	}
+
+	_, knownCategory := baseline.Policies[class.Category]
+	isDegraded := !knownCategory
+
+	if isDegraded {
+		logger.ErrorContext(ctx, "DEGRADED: unknown error, retrying with degraded policy",
+			slog.Any("error", err),
+		)
+	}
+
+	waitDur := baselineWait(class, policy, attempt)
+	catLabel := categoryName(class.Category)
+
+	level := slog.LevelInfo
+	if isDegraded {
+		level = slog.LevelError
+	}
+
+	start := time.Now()
+
+	logger.Log(ctx, level, "retrying with baseline policy",
+		slog.Any("error", err),
+		slog.String("category", catLabel),
+		slog.Any("backoff", waitDur),
+	)
+
+	sleepCtx(ctx, waitDur)
+
+	recordBaselineMetrics(ctx, taskName, catLabel, isDegraded, start)
+
+	return nil
+}
+
+// baselineWait computes the wait duration for a baseline retry.
+// WaitDuration from classification (e.g. Retry-After) overrides backoff.
+func baselineWait(class *ErrorClass, policy *Policy, attempt int) time.Duration {
+	if class.WaitDuration > 0 {
+		return class.WaitDuration
+	}
+
+	return policy.Backoff(attempt)
+}
+
+// recordBaselineMetrics emits OTEL metrics for a baseline retry.
+func recordBaselineMetrics(ctx context.Context, taskName, catLabel string, isDegraded bool, start time.Time) {
+	taskAttr := attribute.String("task", taskName)
+	categoryAttr := attribute.String("category", catLabel)
+
+	metricBaselineRetryTotal.Add(ctx, 1, metric.WithAttributes(taskAttr, categoryAttr))
+
+	if isDegraded {
+		metricDegradedTotal.Add(ctx, 1, metric.WithAttributes(taskAttr))
+		metricDegradedDuration.Record(ctx, time.Since(start).Seconds(), metric.WithAttributes(taskAttr))
+	}
 }
 
 // classifyError runs the classification pipeline and returns the
