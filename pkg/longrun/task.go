@@ -105,6 +105,7 @@ func newTask(name string, interval time.Duration, work WorkFunc, rules []Transie
 				logger.Warn("TransientRule.MaxRetries is 0 (zero-value), using DefaultMaxRetries",
 					slog.Int("resolved", DefaultMaxRetries),
 					slog.Any("rule_err", r.Err),
+					slog.String("rule_key", r.Key),
 				)
 			}
 		}
