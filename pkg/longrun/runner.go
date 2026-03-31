@@ -19,8 +19,9 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/thumbrise/autosolve/pkg/resilience"
 	"golang.org/x/sync/errgroup"
+
+	"github.com/thumbrise/autosolve/pkg/resilience"
 )
 
 // RunnerOptions configures a Runner.
