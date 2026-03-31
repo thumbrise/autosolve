@@ -49,7 +49,7 @@ func (t *Task) restartLoop(ctx context.Context) error {
 
 		// --- success path ---
 		if err == nil {
-			t.resetAllRules()
+			t.attempts.Reset()
 
 			return nil
 		}

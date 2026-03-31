@@ -24,71 +24,77 @@ import (
 	"go.opentelemetry.io/otel/metric"
 )
 
-// handleBaselineFailure classifies err via baseline and retries accordingly.
-func (t *Task) handleBaselineFailure(ctx context.Context, err error) error {
-	class, policy := t.classifyWithBaseline(err)
+// baselineFailureHandler implements failureHandler for the Baseline classification pipeline.
+// It classifies errors via transport + user classifier, selects a Policy, and retries.
+type baselineFailureHandler struct {
+	baseline *Baseline
+	taskName string
+	attempts AttemptStore
+	logger   *slog.Logger
+}
+
+func (h *baselineFailureHandler) Handle(ctx context.Context, err error) error {
+	class, policy := h.classify(err)
 
 	if policy == nil {
-		// Unknown + no Default → permanent error.
-		return err
+		// Unknown + no Default → not our problem, skip to let pipeline return permanent.
+		return errSkip
 	}
 
-	_, knownCategory := t.baseline.Policies[class.Category]
+	_, knownCategory := h.baseline.Policies[class.Category]
 
 	isDegraded := !knownCategory
 	if isDegraded {
-		t.logger.ErrorContext(ctx, "DEGRADED: unknown error, retrying with degraded policy",
+		h.logger.ErrorContext(ctx, "DEGRADED: unknown error, retrying with degraded policy",
 			slog.Any("error", err),
 		)
 	}
 
-	return t.retryWithPolicy(ctx, err, policy, class.Category, class.WaitDuration, isDegraded)
+	return h.retry(ctx, err, policy, class.Category, class.WaitDuration, isDegraded)
 }
 
-// classifyWithBaseline runs the classification pipeline and returns the
+// classify runs the classification pipeline and returns the
 // ErrorClass and the matching Policy. Returns nil policy when the error
 // is unknown and Baseline.Default is nil.
-func (t *Task) classifyWithBaseline(err error) (*ErrorClass, *Policy) {
+func (h *baselineFailureHandler) classify(err error) (*ErrorClass, *Policy) {
 	// [1] Built-in transport classify.
 	if class := ClassifyTransport(err); class != nil {
-		return class, t.policyFor(class.Category)
+		return class, h.policyFor(class.Category)
 	}
 
 	// [2] User classifier.
-	if t.baseline.Classify != nil {
-		if class := t.baseline.Classify(err); class != nil {
-			return class, t.policyFor(class.Category)
+	if h.baseline.Classify != nil {
+		if class := h.baseline.Classify(err); class != nil {
+			return class, h.policyFor(class.Category)
 		}
 	}
 
 	// [3] Unknown — no classifier matched.
 	unknown := &ErrorClass{Category: CategoryUnknown}
 
-	return unknown, t.baseline.Default // Default may be nil → permanent
+	return unknown, h.baseline.Default // Default may be nil → skip
 }
 
 // policyFor returns the policy for the given category.
 // Falls back to Baseline.Default when the category has no explicit policy.
-func (t *Task) policyFor(cat ErrorCategory) *Policy {
-	if p, ok := t.baseline.Policies[cat]; ok {
+func (h *baselineFailureHandler) policyFor(cat ErrorCategory) *Policy {
+	if p, ok := h.baseline.Policies[cat]; ok {
 		return &p
 	}
 
-	return t.baseline.Default
+	return h.baseline.Default
 }
 
-// retryWithPolicy retries using a baseline Policy.
-// category is used to track per-category attempt count for exponential backoff.
-// When waitOverride > 0, sleeps exactly that duration instead of backoff.
-func (t *Task) retryWithPolicy(ctx context.Context, err error, p *Policy, category ErrorCategory, waitOverride time.Duration, isDegraded bool) error {
+// retry retries using a baseline Policy.
+func (h *baselineFailureHandler) retry(ctx context.Context, err error, p *Policy, category ErrorCategory, waitOverride time.Duration, isDegraded bool) error {
 	//nolint:godox // retry budget tracking deferred — baseline policies retry indefinitely for now (zero-value = unlimited).
 	// TODO: track per-policy retry budget (Policy.Retries). See #121.
 	key := "baseline:" + categoryName(category)
-	attempt := t.attempts.Increment(key)
+	attempt := h.attempts.Increment(key)
 
 	categoryLabel := categoryName(category)
 
-	taskAttr := attribute.String("task", t.name)
+	taskAttr := attribute.String("task", h.taskName)
 	categoryAttr := attribute.String("category", categoryLabel)
 
 	metricBaselineRetryTotal.Add(ctx, 1, metric.WithAttributes(taskAttr, categoryAttr))
@@ -107,7 +113,7 @@ func (t *Task) retryWithPolicy(ctx context.Context, err error, p *Policy, catego
 	if waitOverride > 0 {
 		waitDur = waitOverride
 
-		t.logger.Log(ctx, level, "retrying after explicit wait",
+		h.logger.Log(ctx, level, "retrying after explicit wait",
 			slog.Any("error", err),
 			slog.Any("wait", waitDur),
 			slog.Int("attempt", attempt+1),
@@ -115,7 +121,7 @@ func (t *Task) retryWithPolicy(ctx context.Context, err error, p *Policy, catego
 	} else {
 		waitDur = p.Backoff(attempt)
 
-		t.logger.Log(ctx, level, "retrying with backoff",
+		h.logger.Log(ctx, level, "retrying with backoff",
 			slog.Any("error", err),
 			slog.Any("backoff", waitDur),
 			slog.Int("attempt", attempt+1),

@@ -16,6 +16,7 @@ package longrun
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"time"
 )
@@ -35,8 +36,7 @@ type Task struct {
 	interval time.Duration
 	timeout  time.Duration
 	delay    time.Duration
-	rules    []ruleState
-	baseline *Baseline // set by Runner.Add, nil when standalone
+	handlers []failureHandler
 	logger   *slog.Logger
 	attempts AttemptStore
 }
@@ -92,7 +92,12 @@ func newTask(name string, interval time.Duration, work WorkFunc, rules []Transie
 
 	logger = logger.With(slog.String("task", name))
 
-	var ruleStates []ruleState
+	store := cfg.attemptStore
+	if store == nil {
+		store = NewMemoryStore()
+	}
+
+	var handlers []failureHandler
 
 	if len(rules) > 0 {
 		for _, r := range rules {
@@ -104,12 +109,7 @@ func newTask(name string, interval time.Duration, work WorkFunc, rules []Transie
 			}
 		}
 
-		ruleStates = buildRuleStates(rules)
-	}
-
-	store := cfg.attemptStore
-	if store == nil {
-		store = NewMemoryStore()
+		handlers = buildRuleHandlers(rules, store, logger)
 	}
 
 	return &Task{
@@ -119,7 +119,7 @@ func newTask(name string, interval time.Duration, work WorkFunc, rules []Transie
 		interval: interval,
 		timeout:  cfg.timeout,
 		delay:    cfg.delay,
-		rules:    ruleStates,
+		handlers: handlers,
 		logger:   logger,
 		attempts: store,
 	}
@@ -132,7 +132,7 @@ func (t *Task) Wait(ctx context.Context) error {
 		slog.Any("interval", t.interval),
 		slog.Any("timeout", t.timeout),
 		slog.Any("delay", t.delay),
-		slog.Int("rules", len(t.rules)),
+		slog.Int("handlers", len(t.handlers)),
 	)
 
 	err := t.restartLoop(ctx)
@@ -147,77 +147,34 @@ func (t *Task) Wait(ctx context.Context) error {
 	return nil
 }
 
-// handleFailure processes an error through a linear classification pipeline.
+// handleFailure processes an error through the handler pipeline.
 // Returns nil if the caller should retry, or the error to stop.
 //
-// Pipeline:
+// Handlers are checked in order:
+//  1. Per-task TransientRules (explicit error matching via errors.Is/As)
+//  2. Baseline classification (transport + user classifier + degraded mode)
 //
-//  1. Per-task TransientRules (legacy, explicit error matching)
-//  2. Baseline classification (if baseline is set):
-//     a. Built-in transport classify (net.OpError, timeout → Node)
-//     b. User classifier via Baseline.Classify (apierr interfaces → Service)
-//     c. Not classified → Unknown ->
-//     Unknown + Default != nil → retry with Default policy (LOUD log)
-//     Unknown + Default == nil → permanent error
+// Each handler returns:
+//   - errSkip → not my error, try next handler
+//   - nil → handled, retry
+//   - other error → permanent, stop
+//
+// If no handler matches → permanent error.
 //
 // Retry budget semantics: when an interval task completes a successful tick
-// (hadProgress=true), all rule trackers reset to zero — so intermittent failures
-// separated by successful ticks never accumulate toward the retry limit.
+// (hadProgress=true), all attempt counters reset to zero — so intermittent
+// failures separated by successful ticks never accumulate toward the limit.
 func (t *Task) handleFailure(ctx context.Context, err error, hadProgress bool) error {
 	if hadProgress {
-		t.resetAllRules()
+		t.attempts.Reset()
 	}
 
-	// Step 1: per-task TransientRules (explicit error matching).
-	if rs := t.findMatchingRule(err); rs != nil {
-		return t.retryWithRule(ctx, err, rs)
-	}
-
-	// Step 2: baseline classification pipeline.
-	if t.baseline == nil {
-		return err // no baseline, no matching rule → permanent.
-	}
-
-	return t.handleBaselineFailure(ctx, err)
-}
-
-// retryWithRule retries using a per-task TransientRule.
-func (t *Task) retryWithRule(ctx context.Context, err error, rs *ruleState) error {
-	maxRetries := resolveMaxRetries(rs.rule.MaxRetries)
-	attempt := t.attempts.Increment(rs.key)
-
-	if maxRetries != UnlimitedRetries && attempt >= maxRetries {
-		t.logger.ErrorContext(ctx, "max retries reached",
-			slog.Any("error", err),
-			slog.Int("max_retries", maxRetries),
-		)
-
-		return err
-	}
-
-	backoffDuration := rs.rule.Backoff(attempt)
-
-	t.logger.InfoContext(ctx, "transient error, retrying",
-		slog.Int("attempt", attempt+1),
-		slog.Any("error", err),
-		slog.Any("backoff", backoffDuration),
-	)
-
-	sleepCtx(ctx, backoffDuration)
-
-	return nil
-}
-
-func (t *Task) findMatchingRule(err error) *ruleState {
-	for i := range t.rules {
-		if t.rules[i].matcher.Match(err) {
-			return &t.rules[i]
+	for _, h := range t.handlers {
+		result := h.Handle(ctx, err)
+		if !errors.Is(result, errSkip) {
+			return result
 		}
 	}
 
-	return nil
-}
-
-func (t *Task) resetAllRules() {
-	t.attempts.Reset()
+	return err // no handler matched → permanent
 }

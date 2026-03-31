@@ -65,10 +65,16 @@ func NewRunner(opts RunnerOptions) *Runner {
 }
 
 // Add registers a task for concurrent execution.
-// If Runner has a Baseline configured, it is passed to the task.
+// If Runner has a Baseline configured, it is appended as a failureHandler
+// after the task's own TransientRule handlers.
 func (r *Runner) Add(task *Task) {
 	if !r.opts.Baseline.isZero() {
-		task.baseline = &r.opts.Baseline
+		task.handlers = append(task.handlers, &baselineFailureHandler{
+			baseline: &r.opts.Baseline,
+			taskName: task.name,
+			attempts: task.attempts,
+			logger:   task.logger,
+		})
 	}
 
 	r.tasks = append(r.tasks, task)
