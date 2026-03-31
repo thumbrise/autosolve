@@ -75,7 +75,7 @@ And **Degraded mode** — when a worker gets an unknown error and Degraded polic
 
 Building your own is expensive. But when the core abstraction doesn't exist in the ecosystem (per-error retry with different budgets), you either shoehorn something or build it right. We built it right, and it became the foundation everything else stands on.
 
-The package is at `pkg/longrun/` — [full README](https://github.com/thumbrise/autosolve/blob/main/pkg/longrun/README.md), [planned features](https://github.com/thumbrise/autosolve/blob/main/pkg/longrun/TODO.md).
+The package is at `pkg/longrun/` — [overview](../internals/longrun/index.md), [roadmap](../internals/longrun/roadmap.md).
 
 ---
 

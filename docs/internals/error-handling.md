@@ -45,7 +45,7 @@ Different errors → different budgets. GitHub API under load? Retry carefully. 
 
 ### Baseline (Runner-Level)
 
-Invisible protection configured once on Runner. Tasks don't know it exists.
+Invisible protection configured once on Runner. Tasks don't know it exists. Each `Policy` has an optional `Retries` budget: `0` (zero-value) means unlimited, `>0` means exact count.
 
 | Category | Meaning | Policy |
 |----------|---------|--------|
@@ -73,9 +73,9 @@ Errors are wrapped with sentinels at boundaries: `fmt.Errorf("%w: %w", ErrFetchI
 
 When a worker gets an unknown error and Degraded policy is set:
 - Retries internally with Degraded backoff (30s → 5min)
-- **Never returns the error to Runner** — errgroup contract preserved
+- When `Retries` is `0` (unlimited, the default) — **never returns the error to Runner**. Like `docker restart: always`
+- When `Retries > 0` — retries up to the budget, then returns a permanent error to Runner
 - Logs at ERROR level on every retry
-- Like `docker restart: always`
 
 When Degraded is nil (preflights), unknown errors are permanent — crash early.
 

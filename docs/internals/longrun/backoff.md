@@ -117,4 +117,4 @@ Why this matters: a worker in degraded mode at attempt 47 (exponential backoff �
 
 ### Budget Checking
 
-`AttemptStore` only counts. Budget enforcement (MaxRetries) is the handler's responsibility. The store is dumb — handlers are smart. This keeps the interface minimal and the store easily implementable.
+`AttemptStore` only counts. Budget enforcement lives in `doRetry` — the shared retry algorithm that both `ruleFailureHandler` and `baselineFailureHandler` delegate to. The store is dumb — `doRetry` is smart. This keeps the interface minimal and the store easily implementable.

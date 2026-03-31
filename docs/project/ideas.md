@@ -56,7 +56,7 @@ The `pkg/longrun` package is designed for extraction into a standalone module. I
 - **Health endpoint** — expose task status via HTTP for external monitoring
 - **Metrics dashboard** — Grafana template for longrun metrics
 
-See [pkg/longrun/TODO.md](https://github.com/thumbrise/autosolve/blob/main/pkg/longrun/TODO.md) for the package-specific roadmap.
+See the [longrun Roadmap](../internals/longrun/roadmap.md) for the package-specific roadmap.
 
 ---
 

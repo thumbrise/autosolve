@@ -26,9 +26,13 @@ Each handler returns one of three things:
 
 Handlers are ordered. Rules first, Baseline last. First match wins.
 
+## The Retry Algorithm — `doRetry`
+
+Both `ruleFailureHandler` and `baselineFailureHandler` delegate the actual retry to a single internal function `doRetry` in `retry.go`. The skeleton is: increment attempt → check budget → compute wait duration → log → sleep → return nil. Handlers own matching and metrics — `doRetry` owns the retry mechanics.
+
 ## TransientRules — Explicit Error Matching
 
-Each `TransientRule` becomes a `ruleFailureHandler`. It matches errors via `errors.Is` or `errors.As`, tracks attempts via `AttemptStore`, and retries with its own `BackoffFunc`.
+Each `TransientRule` becomes a `ruleFailureHandler`. It matches errors via `errors.Is` or `errors.As`, then delegates to `doRetry` with its own budget and `BackoffFunc`.
 
 ```go
 task := longrun.NewIntervalTask("poll", 10*time.Second, poller.Run, []longrun.TransientRule{
@@ -51,7 +55,9 @@ When an interval task completes a successful tick, all attempt counters reset. I
 
 ## Baseline — Invisible Safety Net
 
-Runner injects a `baselineFailureHandler` into every task at `Add()` time. Tasks don't know it's there.
+Runner injects a `baselineFailureHandler` into every task at `Add()` time. Tasks don't know it's there. After classification, the handler delegates to `doRetry` with the selected policy's budget and backoff.
+
+Each `Policy` has a `Retries` field: `0` (zero-value) means unlimited retries, `>0` means exact budget. This is different from `TransientRule.MaxRetries` where `0` means `DefaultMaxRetries(3)`. The conversion is handled by `resolveBaselineMaxRetries`.
 
 Baseline classifies errors through a three-step pipeline:
 
@@ -83,10 +89,11 @@ When `ClassifierFunc` returns `ErrorClass.WaitDuration > 0`, the handler sleeps 
 
 When a task gets an unknown error and Baseline has a Default policy:
 
-- Retries internally — never bubbles up to Runner
+- Retries internally with the Default policy's backoff
+- When `Default.Retries` is `0` (unlimited, the default) — never bubbles up to Runner. Like Docker `restart: always`
+- When `Default.Retries > 0` — retries up to the budget, then returns a permanent error to Runner
 - Logs at `ERROR` level on every retry
 - Emits `longrun_degraded_total` and `longrun_degraded_duration_seconds` metrics
-- Like Docker `restart: always`
 
 When Default is nil (e.g. preflights): unknown errors are permanent. Crash early, fix your config.
 

@@ -44,9 +44,9 @@ task := longrun.NewIntervalTask("poll", 10*time.Second, poller.Run, []longrun.Tr
 runner := longrun.NewRunner(longrun.RunnerOptions{
     Logger: logger,
     Baseline: longrun.NewBaselineDegraded(
-        longrun.Policy{Backoff: longrun.Exponential(2*time.Second, 2*time.Minute)},   // Node
-        longrun.Policy{Backoff: longrun.Exponential(5*time.Second, 5*time.Minute)},   // Service
-        longrun.Policy{Backoff: longrun.Exponential(30*time.Second, 5*time.Minute)},  // Default (degraded)
+        longrun.Policy{Retries: 10, Backoff: longrun.Exponential(2*time.Second, 2*time.Minute)},  // Node — 10 retries
+        longrun.Policy{Retries: 5, Backoff: longrun.Exponential(5*time.Second, 5*time.Minute)},   // Service — 5 retries
+        longrun.Policy{Backoff: longrun.Exponential(30*time.Second, 5*time.Minute)},               // Default (degraded) — unlimited
         myClassifier,
     ),
 })
@@ -76,5 +76,4 @@ This is a multi-page chapter. Start here for the overview, then dive into specif
 
 ## Links
 
-- Planned features: [`pkg/longrun/TODO.md`](https://github.com/thumbrise/autosolve/blob/main/pkg/longrun/TODO.md)
 - Extraction roadmap: [#55](https://github.com/thumbrise/autosolve/issues/55)
