@@ -60,9 +60,9 @@ This is a multi-page chapter. Start here for the overview, then dive into specif
 
 | Page | What you'll learn |
 |---|---|
-| **[Failure Pipeline](./longrun-pipeline)** | How errors flow through handlers: TransientRules, Baseline classification, degraded mode. The unified `failureHandler` interface. |
-| **[Backoff & Retry State](./longrun-backoff)** | `BackoffFunc` as a pure function. `AttemptStore` for persistent retry state. Why algorithms don't belong to systems. |
-| **[Observability](./longrun-observability)** | Automatic OTEL spans, baseline retry metrics, degraded mode alerting. |
+| **[Failure Pipeline](./pipeline)** | How errors flow through handlers: TransientRules, Baseline classification, degraded mode. The unified `failureHandler` interface. |
+| **[Backoff & Retry State](./backoff)** | `BackoffFunc` as a pure function. `AttemptStore` for persistent retry state. Why algorithms don't belong to systems. |
+| **[Observability](./observability)** | Automatic OTEL spans, baseline retry metrics, degraded mode alerting. |
 
 ## Design Principles
 
