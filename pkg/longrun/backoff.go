@@ -16,8 +16,10 @@ package longrun
 
 import (
 	"context"
-	"math"
 	"time"
+
+	"github.com/thumbrise/autosolve/pkg/resilience"
+	"github.com/thumbrise/autosolve/pkg/resilience/backoff"
 )
 
 const (
@@ -33,6 +35,7 @@ const (
 // BackoffFunc computes the delay before the next retry given a 0-based attempt
 // index. Pure function — no side effects, no context, no IO.
 //
+// This is a type alias for [backoff.Func] from the resilience package.
 // The package provides common constructors (Exponential, Constant), but any
 // function with this signature works — jitter, decorrelated, adaptive, etc.
 //
@@ -42,7 +45,7 @@ const (
 //	    base := time.Second * time.Duration(1<<attempt)
 //	    return base + time.Duration(rand.Int63n(int64(base/2)))
 //	}
-type BackoffFunc func(attempt int) time.Duration
+type BackoffFunc = backoff.Func
 
 // Exponential returns a BackoffFunc with classic exponential growth.
 // Multiplier is 2.0. Delay is capped at maxCap.
@@ -54,7 +57,7 @@ type BackoffFunc func(attempt int) time.Duration
 //	longrun.Exponential(2*time.Second, 2*time.Minute)
 //	// attempt 0: 2s, attempt 1: 4s, attempt 2: 8s, ..., capped at 2m
 func Exponential(initial, maxCap time.Duration) BackoffFunc {
-	return ExponentialWith(initial, maxCap, 2.0)
+	return backoff.Exponential(initial, maxCap)
 }
 
 // ExponentialWith returns a BackoffFunc with configurable multiplier.
@@ -66,18 +69,7 @@ func Exponential(initial, maxCap time.Duration) BackoffFunc {
 //	longrun.ExponentialWith(1*time.Second, 30*time.Second, 1.5)
 //	// attempt 0: 1s, attempt 1: 1.5s, attempt 2: 2.25s, ...
 func ExponentialWith(initial, maxCap time.Duration, multiplier float64) BackoffFunc {
-	return func(attempt int) time.Duration {
-		d := float64(initial) * math.Pow(multiplier, float64(attempt))
-		if maxCap > 0 && d > float64(maxCap) {
-			d = float64(maxCap)
-		}
-
-		if math.IsInf(d, 0) || math.IsNaN(d) || d > float64(math.MaxInt64) {
-			return time.Duration(math.MaxInt64)
-		}
-
-		return time.Duration(d)
-	}
+	return backoff.ExponentialWith(initial, maxCap, multiplier)
 }
 
 // Constant returns a BackoffFunc that always returns the same delay.
@@ -87,9 +79,7 @@ func ExponentialWith(initial, maxCap time.Duration, multiplier float64) BackoffF
 //
 //	longrun.Constant(5*time.Second)
 func Constant(d time.Duration) BackoffFunc {
-	return func(attempt int) time.Duration {
-		return d
-	}
+	return backoff.Constant(d)
 }
 
 // DefaultBackoff returns a sensible default BackoffFunc.
@@ -97,17 +87,11 @@ func Constant(d time.Duration) BackoffFunc {
 // Configured as Exponential(1s, 30s) — classic doubling, capped at 30s.
 // Perfect for 5 retries: 1s, 2s, 4s, 8s, 16s.
 func DefaultBackoff() BackoffFunc {
-	return Exponential(1*time.Second, 30*time.Second)
+	return backoff.Default()
 }
 
 // sleepCtx blocks for duration d or until ctx is cancelled.
 // Does not return an error — the caller checks ctx.Err() separately.
 func sleepCtx(ctx context.Context, d time.Duration) {
-	timer := time.NewTimer(d)
-	defer timer.Stop()
-
-	select {
-	case <-ctx.Done():
-	case <-timer.C:
-	}
+	resilience.SleepCtx(ctx, d)
 }
