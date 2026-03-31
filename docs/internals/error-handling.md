@@ -36,8 +36,8 @@ Explicit per-error retry. The task author decides which errors are retryable and
 
 ```go
 rules := []longrun.TransientRule{
-    {Err: ErrFetchIssues, MaxRetries: 5, Backoff: longrun.Backoff(2*time.Second, 60*time.Second)},
-    {Err: ErrStoreIssues, MaxRetries: longrun.UnlimitedRetries, Backoff: longrun.Backoff(100*time.Millisecond, 2*time.Second)},
+    {Err: ErrFetchIssues, MaxRetries: 5, Backoff: longrun.Exponential(2*time.Second, 60*time.Second)},
+    {Err: ErrStoreIssues, MaxRetries: longrun.UnlimitedRetries, Backoff: longrun.Exponential(100*time.Millisecond, 2*time.Second)},
 }
 ```
 

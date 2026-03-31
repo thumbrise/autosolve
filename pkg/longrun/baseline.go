@@ -113,6 +113,9 @@ type Baseline struct {
 //	    myClassifier,
 //	)
 func NewBaseline(node, service Policy, classify ClassifierFunc) Baseline {
+	validatePolicy("node", node)
+	validatePolicy("service", service)
+
 	return Baseline{
 		Policies: map[ErrorCategory]Policy{
 			CategoryNode:    node,
@@ -134,10 +137,20 @@ func NewBaseline(node, service Policy, classify ClassifierFunc) Baseline {
 //	    myClassifier,
 //	)
 func NewBaselineDegraded(node, service, defaultPolicy Policy, classify ClassifierFunc) Baseline {
+	validatePolicy("default", defaultPolicy)
+
 	b := NewBaseline(node, service, classify)
 	b.Default = &defaultPolicy
 
 	return b
+}
+
+// validatePolicy panics if the policy has a nil Backoff.
+// Fail early: invalid configuration panics at construction time.
+func validatePolicy(name string, p Policy) {
+	if p.Backoff == nil {
+		panic("longrun: Policy.Backoff must not be nil (policy: " + name + ")")
+	}
 }
 
 // isZero reports whether b is the zero-value Baseline (no policies configured).
