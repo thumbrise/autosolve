@@ -49,6 +49,10 @@ type Option struct {
 // This is the only way to construct an Option — sub-packages (retry, timeout,
 // circuit, etc.) use it to build their options.
 func NewOption(mw Middleware) Option {
+	if mw == nil {
+		panic("resilience.NewOption: middleware must not be nil")
+	}
+
 	return Option{mw: mw}
 }
 
