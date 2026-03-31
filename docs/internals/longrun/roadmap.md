@@ -85,5 +85,4 @@ Each pattern is a separate module with its own `go.mod`. Users pick what they ne
 ## Tracking
 
 - Extraction issue: [#55](https://github.com/thumbrise/autosolve/issues/55)
-- Pipeline unification: [#121](https://github.com/thumbrise/autosolve/issues/121) ✅ (done in PR #203)
-- Planned features: [`pkg/longrun/TODO.md`](https://github.com/thumbrise/autosolve/blob/main/pkg/longrun/TODO.md)
+- Pipeline unification: [#121](https://github.com/thumbrise/autosolve/issues/121) ✅ (done in PR #208)
