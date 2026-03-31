@@ -14,7 +14,11 @@
 
 package longrun
 
-import "fmt"
+import (
+	"context"
+	"fmt"
+	"log/slog"
+)
 
 // TransientRule binds an error to its retry settings.
 // Different errors can have different retry budgets and backoff curves.
@@ -73,30 +77,65 @@ func TransientGroup(maxRetries int, backoff BackoffFunc, errs ...error) []Transi
 	return rules
 }
 
-// ruleState is the internal, mutable representation of a TransientRule.
-// TransientRule itself is a pure config value from the caller.
-type ruleState struct {
-	rule    TransientRule
-	matcher Matcher
-	key     string // opaque key for AttemptStore, e.g. "rule:0", "rule:1"
+// ruleFailureHandler implements failureHandler for a single TransientRule.
+// Matches errors via Matcher (errors.Is/As), tracks attempts via AttemptStore,
+// retries with BackoffFunc.
+type ruleFailureHandler struct {
+	rule     TransientRule
+	matcher  Matcher
+	key      string // opaque key for AttemptStore, e.g. "rule:0"
+	attempts AttemptStore
+	logger   *slog.Logger
 }
 
-// buildRuleStates validates rules and compiles them into ruleStates.
+func (h *ruleFailureHandler) Handle(ctx context.Context, err error) error {
+	if !h.matcher.Match(err) {
+		return errSkip
+	}
+
+	maxRetries := resolveMaxRetries(h.rule.MaxRetries)
+	attempt := h.attempts.Increment(h.key)
+
+	if maxRetries != UnlimitedRetries && attempt >= maxRetries {
+		h.logger.ErrorContext(ctx, "max retries reached",
+			slog.Any("error", err),
+			slog.Int("max_retries", maxRetries),
+		)
+
+		return err
+	}
+
+	backoffDuration := h.rule.Backoff(attempt)
+
+	h.logger.InfoContext(ctx, "transient error, retrying",
+		slog.Int("attempt", attempt+1),
+		slog.Any("error", err),
+		slog.Any("backoff", backoffDuration),
+	)
+
+	sleepCtx(ctx, backoffDuration)
+
+	return nil
+}
+
+// buildRuleHandlers validates rules and compiles them into failureHandlers.
 // Panics on invalid rules (nil Err, unsupported Err type, nil Backoff).
-func buildRuleStates(rules []TransientRule) []ruleState {
-	states := make([]ruleState, len(rules))
+func buildRuleHandlers(rules []TransientRule, attempts AttemptStore, logger *slog.Logger) []failureHandler {
+	handlers := make([]failureHandler, len(rules))
 
 	for i, r := range rules {
 		if r.Backoff == nil {
 			panic(fmt.Sprintf("longrun: TransientRule.Backoff must not be nil (rule Err: %v)", r.Err))
 		}
 
-		states[i] = ruleState{
-			rule:    r,
-			matcher: NewMatcher(r.Err), // panics on nil or unsupported type
-			key:     fmt.Sprintf("rule:%d", i),
+		handlers[i] = &ruleFailureHandler{
+			rule:     r,
+			matcher:  NewMatcher(r.Err), // panics on nil or unsupported type
+			key:      fmt.Sprintf("rule:%d", i),
+			attempts: attempts,
+			logger:   logger,
 		}
 	}
 
-	return states
+	return handlers
 }
