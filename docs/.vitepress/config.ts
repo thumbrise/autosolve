@@ -50,6 +50,7 @@ export default defineConfig({
               {text: 'Failure Pipeline', link: '/internals/longrun/pipeline'},
               {text: 'Backoff & State', link: '/internals/longrun/backoff'},
               {text: 'Observability', link: '/internals/longrun/observability'},
+              {text: 'Roadmap', link: '/internals/longrun/roadmap'},
             ]},
           ],
         },
