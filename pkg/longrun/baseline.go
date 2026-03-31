@@ -48,8 +48,8 @@ type ErrorClass struct {
 	Category ErrorCategory
 
 	// WaitDuration, when > 0, overrides the backoff calculation.
-	// The task sleeps exactly this duration instead of using
-	// policy.Backoff.Duration(attempt).
+	// The task sleeps exactly this duration instead of calling
+	// policy.Backoff(attempt).
 	// Typical source: Retry-After header on HTTP 429.
 	WaitDuration time.Duration
 }
@@ -68,8 +68,9 @@ type Policy struct {
 	//  >0 → exact retry count.
 	Retries int
 
-	// Backoff controls exponential backoff between retries.
-	Backoff BackoffConfig
+	// Backoff computes the delay before the next retry.
+	// Use Exponential, Constant, or any custom BackoffFunc.
+	Backoff BackoffFunc
 }
 
 // Baseline is a set of policies that Runner silently applies to every task.
@@ -107,8 +108,8 @@ type Baseline struct {
 // Example:
 //
 //	longrun.NewBaseline(
-//	    longrun.Policy{Backoff: longrun.Backoff(2*time.Second, 2*time.Minute)},
-//	    longrun.Policy{Backoff: longrun.Backoff(5*time.Second, 5*time.Minute)},
+//	    longrun.Policy{Backoff: longrun.Exponential(2*time.Second, 2*time.Minute)},
+//	    longrun.Policy{Backoff: longrun.Exponential(5*time.Second, 5*time.Minute)},
 //	    myClassifier,
 //	)
 func NewBaseline(node, service Policy, classify ClassifierFunc) Baseline {
@@ -127,9 +128,9 @@ func NewBaseline(node, service Policy, classify ClassifierFunc) Baseline {
 // Example:
 //
 //	longrun.NewBaselineDegraded(
-//	    longrun.Policy{Backoff: longrun.Backoff(2*time.Second, 2*time.Minute)},
-//	    longrun.Policy{Backoff: longrun.Backoff(5*time.Second, 5*time.Minute)},
-//	    longrun.Policy{Backoff: longrun.Backoff(30*time.Second, 5*time.Minute)},
+//	    longrun.Policy{Backoff: longrun.Exponential(2*time.Second, 2*time.Minute)},
+//	    longrun.Policy{Backoff: longrun.Exponential(5*time.Second, 5*time.Minute)},
+//	    longrun.Policy{Backoff: longrun.Exponential(30*time.Second, 5*time.Minute)},
 //	    myClassifier,
 //	)
 func NewBaselineDegraded(node, service, defaultPolicy Policy, classify ClassifierFunc) Baseline {
@@ -144,17 +145,3 @@ func (b *Baseline) isZero() bool {
 	return len(b.Policies) == 0 && b.Default == nil && b.Classify == nil
 }
 
-// Backoff is a convenience constructor for BackoffConfig with sensible defaults.
-// Multiplier defaults to 2.0 (classic exponential backoff).
-//
-// Example:
-//
-//	longrun.Backoff(2*time.Second, 2*time.Minute)
-//	// → BackoffConfig{Initial: 2s, Max: 2m, Multiplier: 2.0}
-func Backoff(initial, maxCap time.Duration) BackoffConfig {
-	return BackoffConfig{
-		Initial:    initial,
-		Max:        maxCap,
-		Multiplier: 2.0,
-	}
-}

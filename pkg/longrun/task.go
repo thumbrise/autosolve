@@ -41,7 +41,7 @@ type Task struct {
 
 	// baselineAttempts tracks consecutive retry attempts per baseline category.
 	// Keyed by ErrorCategory — supports both predefined and user-defined categories.
-	// Used for exponential backoff: attempt N → Backoff.Duration(N).
+	// Used for exponential backoff: attempt N → Backoff(N).
 	// Reset to zero on successful tick (hadProgress=true) together with rule trackers.
 	//
 	// Example: WiFi drops, 3 consecutive Node errors:
@@ -197,7 +197,7 @@ func (t *Task) retryWithRule(ctx context.Context, err error, rs *ruleState) erro
 		return err
 	}
 
-	backoffDuration := rs.rule.Backoff.Duration(attempt)
+	backoffDuration := rs.rule.Backoff(attempt)
 
 	t.logger.InfoContext(ctx, "transient error, retrying",
 		slog.Int("attempt", attempt+1),
@@ -205,9 +205,7 @@ func (t *Task) retryWithRule(ctx context.Context, err error, rs *ruleState) erro
 		slog.Any("backoff", backoffDuration),
 	)
 
-	if waitErr := rs.rule.Backoff.Wait(ctx, attempt); waitErr != nil {
-		return nil //nolint:nilerr // context cancelled during backoff, next iteration handles it
-	}
+	sleepCtx(ctx, backoffDuration)
 
 	return nil
 }

@@ -46,31 +46,15 @@ func TestNewIntervalTask_PanicsOnZeroInterval(t *testing.T) {
 	longrun.NewIntervalTask("test", 0, func(context.Context) error { return nil }, nil)
 }
 
-func TestNewOneShotTask_PanicsOnZeroBackoffInitial(t *testing.T) {
+func TestNewOneShotTask_PanicsOnNilBackoff(t *testing.T) {
 	defer func() {
 		if recover() == nil {
-			t.Fatal("expected panic for zero backoff Initial")
+			t.Fatal("expected panic for nil backoff")
 		}
 	}()
 
 	longrun.NewOneShotTask("test", func(context.Context) error { return nil }, []longrun.TransientRule{
-		{Err: errSentinel, MaxRetries: 3, Backoff: longrun.BackoffConfig{
-			Initial: 0, Max: time.Second, Multiplier: 2.0,
-		}},
-	})
-}
-
-func TestNewOneShotTask_PanicsOnZeroBackoffMultiplier(t *testing.T) {
-	defer func() {
-		if recover() == nil {
-			t.Fatal("expected panic for zero backoff Multiplier")
-		}
-	}()
-
-	longrun.NewOneShotTask("test", func(context.Context) error { return nil }, []longrun.TransientRule{
-		{Err: errSentinel, MaxRetries: 3, Backoff: longrun.BackoffConfig{
-			Initial: time.Second, Max: 10 * time.Second, Multiplier: 0,
-		}},
+		{Err: errSentinel, MaxRetries: 3, Backoff: nil},
 	})
 }
 
@@ -117,9 +101,7 @@ func TestOneShotTask_TransientRetry(t *testing.T) {
 
 		return nil
 	}, []longrun.TransientRule{
-		{Err: errSentinel, MaxRetries: 5, Backoff: longrun.BackoffConfig{
-			Initial: 1 * time.Millisecond, Max: 10 * time.Millisecond, Multiplier: 2.0,
-		}},
+		{Err: errSentinel, MaxRetries: 5, Backoff: longrun.Exponential(1*time.Millisecond, 10*time.Millisecond)},
 	})
 
 	err := task.Wait(context.Background())
@@ -136,9 +118,7 @@ func TestOneShotTask_MaxRetriesExhausted(t *testing.T) {
 	task := longrun.NewOneShotTask("test", func(context.Context) error {
 		return errSentinel
 	}, []longrun.TransientRule{
-		{Err: errSentinel, MaxRetries: 2, Backoff: longrun.BackoffConfig{
-			Initial: 1 * time.Millisecond, Max: 10 * time.Millisecond, Multiplier: 2.0,
-		}},
+		{Err: errSentinel, MaxRetries: 2, Backoff: longrun.Exponential(1*time.Millisecond, 10*time.Millisecond)},
 	})
 
 	err := task.Wait(context.Background())
@@ -153,9 +133,7 @@ func TestOneShotTask_UnmatchedError_Permanent(t *testing.T) {
 	task := longrun.NewOneShotTask("test", func(context.Context) error {
 		return errOther
 	}, []longrun.TransientRule{
-		{Err: errSentinel, MaxRetries: 5, Backoff: longrun.BackoffConfig{
-			Initial: 1 * time.Millisecond, Max: 10 * time.Millisecond, Multiplier: 2.0,
-		}},
+		{Err: errSentinel, MaxRetries: 5, Backoff: longrun.Exponential(1*time.Millisecond, 10*time.Millisecond)},
 	})
 
 	err := task.Wait(context.Background())
@@ -243,9 +221,7 @@ func TestIntervalTask_TransientRetryThenRecover(t *testing.T) {
 
 		return nil
 	}, []longrun.TransientRule{
-		{Err: errSentinel, MaxRetries: 3, Backoff: longrun.BackoffConfig{
-			Initial: 1 * time.Millisecond, Max: 5 * time.Millisecond, Multiplier: 2.0,
-		}},
+		{Err: errSentinel, MaxRetries: 3, Backoff: longrun.Exponential(1*time.Millisecond, 5*time.Millisecond)},
 	})
 
 	err := task.Wait(ctx)
@@ -293,9 +269,7 @@ func TestOneShotTask_WithDelay_NotReappliedOnRetry(t *testing.T) {
 
 		return nil
 	}, []longrun.TransientRule{
-		{Err: errSentinel, MaxRetries: 5, Backoff: longrun.BackoffConfig{
-			Initial: 1 * time.Millisecond, Max: 5 * time.Millisecond, Multiplier: 2.0,
-		}},
+		{Err: errSentinel, MaxRetries: 5, Backoff: longrun.Exponential(1*time.Millisecond, 5*time.Millisecond)},
 	}, longrun.WithDelay(delay))
 
 	start := time.Now()
@@ -346,9 +320,9 @@ func TestBaseline_OutOfRangeCategory_NoPanic(t *testing.T) {
 
 	runner := longrun.NewRunner(longrun.RunnerOptions{
 		Baseline: longrun.NewBaselineDegraded(
-			longrun.Policy{Backoff: longrun.Backoff(1*time.Millisecond, 10*time.Millisecond)},
-			longrun.Policy{Backoff: longrun.Backoff(1*time.Millisecond, 10*time.Millisecond)},
-			longrun.Policy{Backoff: longrun.Backoff(1*time.Millisecond, 10*time.Millisecond)},
+			longrun.Policy{Backoff: longrun.Exponential(1*time.Millisecond, 10*time.Millisecond)},
+			longrun.Policy{Backoff: longrun.Exponential(1*time.Millisecond, 10*time.Millisecond)},
+			longrun.Policy{Backoff: longrun.Exponential(1*time.Millisecond, 10*time.Millisecond)},
 			func(err error) *longrun.ErrorClass {
 				return &longrun.ErrorClass{Category: longrun.ErrorCategory(99)}
 			},

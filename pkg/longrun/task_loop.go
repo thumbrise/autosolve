@@ -134,17 +134,3 @@ func (t *Task) runOnce(ctx context.Context) error {
 	return err
 }
 
-// waitDuration sleeps for d or until ctx is cancelled.
-// Returns nil on successful wait (caller should retry),
-// nil on context cancellation (next iteration handles it).
-func (t *Task) waitDuration(ctx context.Context, d time.Duration) error {
-	timer := time.NewTimer(d)
-	defer timer.Stop()
-
-	select {
-	case <-ctx.Done():
-		return nil
-	case <-timer.C:
-		return nil
-	}
-}
