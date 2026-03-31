@@ -72,10 +72,12 @@ type TransientRule struct {
 // Each error in errs must be a valid Err value (sentinel or typed nil pointer).
 // See TransientRule.Err for details.
 //
+// Note: typed nil pointers (*net.OpError)(nil) require explicit Key on each rule.
+// TransientGroup does not set Key — use it only with sentinel errors.
+//
 // Example:
 //
 //	longrun.TransientGroup(longrun.UnlimitedRetries, longrun.DefaultBackoff(),
-//	    (*net.OpError)(nil),
 //	    ErrFetchIssues,
 //	    ErrStoreIssues,
 //	)
