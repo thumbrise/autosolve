@@ -195,6 +195,26 @@ func TestOn_PanicsOnNilBackoff(t *testing.T) {
 	retry.On(errTransient, 3, nil)
 }
 
+func TestOn_PanicsOnZeroMaxRetries(t *testing.T) {
+	defer func() {
+		if recover() == nil {
+			t.Fatal("expected panic for maxRetries=0")
+		}
+	}()
+
+	retry.On(errTransient, 0, backoff.Constant(1*time.Millisecond))
+}
+
+func TestOn_PanicsOnInvalidNegativeMaxRetries(t *testing.T) {
+	defer func() {
+		if recover() == nil {
+			t.Fatal("expected panic for maxRetries=-5")
+		}
+	}()
+
+	retry.On(errTransient, -5, backoff.Constant(1*time.Millisecond))
+}
+
 func TestOn_WrappedError(t *testing.T) {
 	wrapped := errors.New("wrapped: transient")
 

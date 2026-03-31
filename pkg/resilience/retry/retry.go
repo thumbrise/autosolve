@@ -27,6 +27,7 @@ package retry
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"reflect"
 
@@ -60,6 +61,8 @@ func On(errVal error, maxRetries int, bo backoff.Func) resilience.Option {
 		panic("retry.On: backoff must not be nil")
 	}
 
+	validateMaxRetries("retry.On", maxRetries)
+
 	return newRetryOption(newMatcher(errVal), maxRetries, bo, "retry")
 }
 
@@ -79,11 +82,21 @@ func OnFunc(classify func(error) bool, maxRetries int, bo backoff.Func, name str
 		panic("retry.OnFunc: backoff must not be nil")
 	}
 
+	validateMaxRetries("retry.OnFunc", maxRetries)
+
 	if name == "" {
 		name = "custom"
 	}
 
 	return newRetryOption(classify, maxRetries, bo, "retry("+name+")")
+}
+
+// validateMaxRetries panics on invalid maxRetries values.
+// Valid: Unlimited (-1) or > 0. Zero and other negatives are programmer errors.
+func validateMaxRetries(caller string, maxRetries int) {
+	if maxRetries == 0 || maxRetries < Unlimited {
+		panic(fmt.Sprintf("%s: maxRetries must be Unlimited (-1) or > 0, got %d", caller, maxRetries))
+	}
 }
 
 // newRetryOption builds the common retry middleware.

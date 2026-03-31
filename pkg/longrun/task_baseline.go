@@ -57,6 +57,17 @@ func baselineOption(baseline *Baseline, taskName string, logger *slog.Logger) re
 					return err
 				}
 
+				// Budget check: Policy.Retries > 0 → exact limit.
+				// Policy.Retries <= 0 → unlimited (baseline default).
+				if policy.Retries > 0 && attempt >= policy.Retries {
+					logger.ErrorContext(ctx, "baseline: max retries reached",
+						slog.Any("error", err),
+						slog.Int("max_retries", policy.Retries),
+					)
+
+					return err
+				}
+
 				_, knownCategory := baseline.Policies[class.Category]
 				isDegraded := !knownCategory
 
