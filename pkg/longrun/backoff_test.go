@@ -15,88 +15,75 @@
 package longrun_test
 
 import (
-	"context"
 	"testing"
 	"time"
 
 	"github.com/thumbrise/autosolve/pkg/longrun"
 )
 
-func TestBackoffConfig_Wait_RespectsContext(t *testing.T) {
-	cfg := longrun.BackoffConfig{
-		Initial:    10 * time.Second,
-		Max:        10 * time.Second,
-		Multiplier: 2.0,
+func TestExponential_ClassicDoubling(t *testing.T) {
+	backoff := longrun.Exponential(1*time.Second, 30*time.Second)
+
+	if d := backoff(0); d != 1*time.Second {
+		t.Fatalf("attempt 0: expected 1s, got %v", d)
 	}
 
-	ctx, cancel := context.WithCancel(context.Background())
-	cancel() // cancel immediately
-
-	start := time.Now()
-	err := cfg.Wait(ctx, 0)
-	elapsed := time.Since(start)
-
-	if err == nil {
-		t.Fatal("expected error from cancelled context")
+	if d := backoff(1); d != 2*time.Second {
+		t.Fatalf("attempt 1: expected 2s, got %v", d)
 	}
 
-	if elapsed > 100*time.Millisecond {
-		t.Fatalf("wait should have returned immediately, took %v", elapsed)
+	if d := backoff(3); d != 8*time.Second {
+		t.Fatalf("attempt 3: expected 8s, got %v", d)
 	}
 }
 
-func TestBackoffConfig_Wait_CompletesOnTime(t *testing.T) {
-	cfg := longrun.BackoffConfig{
-		Initial:    10 * time.Millisecond,
-		Max:        100 * time.Millisecond,
-		Multiplier: 2.0,
-	}
-
-	ctx := context.Background()
-
-	start := time.Now()
-	err := cfg.Wait(ctx, 0)
-	elapsed := time.Since(start)
-
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	if elapsed < 5*time.Millisecond {
-		t.Fatalf("wait returned too fast: %v", elapsed)
-	}
-}
-
-func TestBackoffConfig_Duration_CapsAtMax(t *testing.T) {
-	cfg := longrun.BackoffConfig{
-		Initial:    1 * time.Second,
-		Max:        5 * time.Second,
-		Multiplier: 10.0,
-	}
+func TestExponential_CapsAtMax(t *testing.T) {
+	backoff := longrun.ExponentialWith(1*time.Second, 5*time.Second, 10.0)
 
 	// attempt 0: 1s * 10^0 = 1s
-	d0 := cfg.Duration(0)
-	if d0 != 1*time.Second {
-		t.Fatalf("attempt 0: expected 1s, got %v", d0)
+	if d := backoff(0); d != 1*time.Second {
+		t.Fatalf("attempt 0: expected 1s, got %v", d)
 	}
 
 	// attempt 1: 1s * 10^1 = 10s → capped at 5s
-	d1 := cfg.Duration(1)
-	if d1 != 5*time.Second {
-		t.Fatalf("attempt 1: expected 5s (capped), got %v", d1)
+	if d := backoff(1); d != 5*time.Second {
+		t.Fatalf("attempt 1: expected 5s (capped), got %v", d)
 	}
 }
 
-func TestBackoffConfig_Duration_NoMaxNoCap(t *testing.T) {
-	cfg := longrun.BackoffConfig{
-		Initial:    1 * time.Second,
-		Max:        0, // no cap
-		Multiplier: 2.0,
-	}
+func TestExponential_NoMaxNoCap(t *testing.T) {
+	backoff := longrun.ExponentialWith(1*time.Second, 0, 2.0)
 
 	// attempt 3: 1s * 2^3 = 8s — no cap
-	d := cfg.Duration(3)
-	if d != 8*time.Second {
+	if d := backoff(3); d != 8*time.Second {
 		t.Fatalf("expected 8s, got %v", d)
+	}
+}
+
+func TestConstant_AlwaysSameDuration(t *testing.T) {
+	backoff := longrun.Constant(5 * time.Second)
+
+	for attempt := 0; attempt < 10; attempt++ {
+		if d := backoff(attempt); d != 5*time.Second {
+			t.Fatalf("attempt %d: expected 5s, got %v", attempt, d)
+		}
+	}
+}
+
+func TestDefaultBackoff_ReturnsSensibleValues(t *testing.T) {
+	backoff := longrun.DefaultBackoff()
+
+	// Should be Exponential(1s, 30s)
+	if d := backoff(0); d != 1*time.Second {
+		t.Fatalf("attempt 0: expected 1s, got %v", d)
+	}
+
+	if d := backoff(4); d != 16*time.Second {
+		t.Fatalf("attempt 4: expected 16s, got %v", d)
+	}
+
+	// attempt 5: 32s → capped at 30s
+	if d := backoff(5); d != 30*time.Second {
+		t.Fatalf("attempt 5: expected 30s (capped), got %v", d)
 	}
 }

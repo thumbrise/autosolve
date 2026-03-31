@@ -113,7 +113,7 @@ func (t *Task) retryWithPolicy(ctx context.Context, err error, p *Policy, catego
 			slog.Int("attempt", attempt+1),
 		)
 	} else {
-		waitDur = p.Backoff.Duration(attempt)
+		waitDur = p.Backoff(attempt)
 
 		t.logger.Log(ctx, level, "retrying with backoff",
 			slog.Any("error", err),
@@ -123,7 +123,7 @@ func (t *Task) retryWithPolicy(ctx context.Context, err error, p *Policy, catego
 	}
 
 	start := time.Now()
-	result := t.waitDuration(ctx, waitDur)
+	result := sleepCtx(ctx, waitDur)
 
 	if isDegraded {
 		metricDegradedDuration.Record(ctx, time.Since(start).Seconds(), metric.WithAttributes(taskAttr))

@@ -63,8 +63,8 @@ func (s *Scheduler) runPreflights(ctx context.Context, tasks []spec.Task) error 
 		Logger: s.logger,
 		// Default: nil — unknown errors crash preflights. Fix your config.
 		Baseline: longrun.NewBaseline(
-			longrun.Policy{Backoff: longrun.Backoff(2*time.Second, 2*time.Minute)}, // Node — aggressive retry
-			longrun.Policy{Backoff: longrun.Backoff(5*time.Second, 5*time.Minute)}, // Service — gentle retry
+			longrun.Policy{Backoff: longrun.Exponential(2*time.Second, 2*time.Minute)}, // Node — aggressive retry
+			longrun.Policy{Backoff: longrun.Exponential(5*time.Second, 5*time.Minute)}, // Service — gentle retry
 			infraClassifier(),
 		),
 	})
@@ -81,9 +81,9 @@ func (s *Scheduler) runWorkers(ctx context.Context, tasks []spec.Task) error {
 		Logger: s.logger,
 		// Unknown errors — don't crash, scream loudly, retry with big backoff.
 		Baseline: longrun.NewBaselineDegraded(
-			longrun.Policy{Backoff: longrun.Backoff(2*time.Second, 2*time.Minute)},  // Node — aggressive retry
-			longrun.Policy{Backoff: longrun.Backoff(5*time.Second, 5*time.Minute)},  // Service — gentle retry
-			longrun.Policy{Backoff: longrun.Backoff(30*time.Second, 5*time.Minute)}, // Default — degraded
+			longrun.Policy{Backoff: longrun.Exponential(2*time.Second, 2*time.Minute)},  // Node — aggressive retry
+			longrun.Policy{Backoff: longrun.Exponential(5*time.Second, 5*time.Minute)},  // Service — gentle retry
+			longrun.Policy{Backoff: longrun.Exponential(30*time.Second, 5*time.Minute)}, // Default — degraded
 			infraClassifier(),
 		),
 	})

@@ -43,10 +43,10 @@ type TransientRule struct {
 	//  >0 → exact retry count.
 	MaxRetries int
 
-	Backoff BackoffConfig
+	Backoff BackoffFunc
 }
 
-// TransientGroup creates N rules with identical MaxRetries and BackoffConfig.
+// TransientGroup creates N rules with identical MaxRetries and BackoffFunc.
 // Each rule gets its own independent retry budget — failures of one error
 // do not count toward the budget of another.
 //
@@ -60,7 +60,7 @@ type TransientRule struct {
 //	    ErrFetchIssues,
 //	    ErrStoreIssues,
 //	)
-func TransientGroup(maxRetries int, backoff BackoffConfig, errs ...error) []TransientRule {
+func TransientGroup(maxRetries int, backoff BackoffFunc, errs ...error) []TransientRule {
 	rules := make([]TransientRule, len(errs))
 	for i, err := range errs {
 		rules[i] = TransientRule{
@@ -82,17 +82,13 @@ type ruleState struct {
 }
 
 // buildRuleStates validates rules and compiles them into ruleStates.
-// Panics on invalid rules (nil Err, unsupported Err type, zero Initial backoff).
+// Panics on invalid rules (nil Err, unsupported Err type, nil Backoff).
 func buildRuleStates(rules []TransientRule) []ruleState {
 	states := make([]ruleState, len(rules))
 
 	for i, r := range rules {
-		if r.Backoff.Initial <= 0 {
-			panic(fmt.Sprintf("longrun: TransientRule.Backoff.Initial must be > 0, got %v (rule Err: %v)", r.Backoff.Initial, r.Err))
-		}
-
-		if r.Backoff.Multiplier <= 0 {
-			panic(fmt.Sprintf("longrun: TransientRule.Backoff.Multiplier must be > 0, got %v (rule Err: %v)", r.Backoff.Multiplier, r.Err))
+		if r.Backoff == nil {
+			panic(fmt.Sprintf("longrun: TransientRule.Backoff must not be nil (rule Err: %v)", r.Err))
 		}
 
 		states[i] = ruleState{
