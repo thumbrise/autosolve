@@ -75,7 +75,24 @@ type AttemptStore interface {
 }
 ```
 
-Keys are opaque strings formed by handlers: `"rule:0"`, `"baseline:node"`, `"baseline:degraded"`. The store doesn't interpret them.
+Keys are opaque strings formed by handlers: `"rule:fetch issues"`, `"baseline:node"`, `"baseline:degraded"`. The store doesn't interpret them.
+
+### **Stable Keys — Safe for Persistent Stores**
+
+**Rule keys are stable across deployments.** Sentinel errors derive their key from the error message automatically. Typed nil pointer errors (`(*net.OpError)(nil)`) require an explicit `Key` field — construction panics without it.
+
+```go
+// Sentinel — Key auto-derived from error message "fetch issues"
+{Err: ErrFetchIssues, Backoff: longrun.Exponential(2*time.Second, 2*time.Minute)}
+
+// Typed nil pointer — Key MUST be set explicitly
+{Err: (*net.OpError)(nil), Key: "net-op", Backoff: longrun.Exponential(1*time.Second, 30*time.Second)}
+
+// Explicit Key — always wins, use for full control
+{Err: ErrTimeout, Key: "github-timeout", Backoff: longrun.Exponential(5*time.Second, 5*time.Minute)}
+```
+
+**Reordering rules between deployments is safe.** Each rule is identified by its Key, not by its position in the slice. Persistent backoff state maps to the right rule regardless of order.
 
 ### Default: MemoryStore
 

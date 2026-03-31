@@ -20,7 +20,7 @@ How to update:
 - **Fail early** — invalid configuration panics at construction time, not silently misbehaves at runtime. Panics are for programmer errors (wrong config, nil where not allowed). Errors are for runtime failures (network, IO, external systems).
 - **Safe zero-values** — the zero-value of a config field should be safe, not surprising. If zero means "use default", document it in godoc and log a warning so it's visible. Example: `// MaxRetries: 0 (zero-value) → DefaultMaxRetries (3). Logs a warning.`
 - **Concrete names** — name types and functions after what they do, not what pattern they follow.
-  Banned names: `Service`, `Manager`, `Handler`, `Helper`, `Utils`, `Common`, `Base`, `Processor`, `Coordinator`, `Wrapper`. If you can't name it without a buzzword, the abstraction is wrong.
+  Banned names: `Service`, `Manager`, `Handler`, `Helper`, `Utils`, `Common`, `Base`, `Processor`, `Coordinator`, `Wrapper`. If you can't name it without a buzzword, the abstraction is wrong. Exception: unexported types implementing a concrete internal contract (e.g. `failureHandler` — handles failures, not "handles requests") are allowed when the name describes the action, not the pattern.
 - **`util` is banned** — if something is reusable, extract it into `pkg/` with a semantic package name that describes what it does, not that it's a utility.
 - **No broken windows** — a misplaced field, a wrong abstraction level, a "temporary" hack — fix it now, not "later". If one shortcut stays, the next contributor assumes it's the norm and adds another. Codebase quality degrades one tolerated compromise at a time. If you can't fix it in this PR, create an issue immediately — never leave it undocumented.
 

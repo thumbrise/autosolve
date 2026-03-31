@@ -20,8 +20,12 @@ package longrun
 // a persistent implementation (Redis, SQLite) via WithAttemptStore to
 // survive process restarts without losing backoff state.
 //
-// Keys are opaque strings formed by the caller — e.g. "rule:ErrFetch"
+// Keys are opaque strings formed by the caller — e.g. "rule:fetch issues"
 // or "baseline:node". The store does not interpret them.
+//
+// Rule keys are derived from the error message (sentinels) or from the
+// explicit TransientRule.Key field (typed nil pointers). This makes keys
+// stable across deployments — reordering rules does not break persistent state.
 //
 // AttemptStore is NOT required to be safe for concurrent use.
 // Each Task owns its own store instance.
