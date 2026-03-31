@@ -22,6 +22,9 @@ import (
 	"time"
 
 	"github.com/thumbrise/autosolve/pkg/longrun"
+	"github.com/thumbrise/autosolve/pkg/resilience"
+	"github.com/thumbrise/autosolve/pkg/resilience/backoff"
+	"github.com/thumbrise/autosolve/pkg/resilience/retry"
 )
 
 // --- constructor panics ---
@@ -53,9 +56,8 @@ func TestNewOneShotTask_PanicsOnNilBackoff(t *testing.T) {
 		}
 	}()
 
-	longrun.NewOneShotTask("test", func(context.Context) error { return nil }, []longrun.TransientRule{
-		{Err: errSentinel, MaxRetries: 3, Backoff: nil},
-	})
+	// retry.On panics on nil backoff at construction time.
+	retry.On(errSentinel, 3, nil)
 }
 
 // --- one-shot ---
@@ -100,8 +102,8 @@ func TestOneShotTask_TransientRetry(t *testing.T) {
 		}
 
 		return nil
-	}, []longrun.TransientRule{
-		{Err: errSentinel, MaxRetries: 5, Backoff: longrun.Exponential(1*time.Millisecond, 10*time.Millisecond)},
+	}, []resilience.Option{
+		retry.On(errSentinel, 5, backoff.Exponential(1*time.Millisecond, 10*time.Millisecond)),
 	})
 
 	err := task.Wait(context.Background())
@@ -117,8 +119,8 @@ func TestOneShotTask_TransientRetry(t *testing.T) {
 func TestOneShotTask_MaxRetriesExhausted(t *testing.T) {
 	task := longrun.NewOneShotTask("test", func(context.Context) error {
 		return errSentinel
-	}, []longrun.TransientRule{
-		{Err: errSentinel, MaxRetries: 2, Backoff: longrun.Exponential(1*time.Millisecond, 10*time.Millisecond)},
+	}, []resilience.Option{
+		retry.On(errSentinel, 2, backoff.Exponential(1*time.Millisecond, 10*time.Millisecond)),
 	})
 
 	err := task.Wait(context.Background())
@@ -132,8 +134,8 @@ func TestOneShotTask_UnmatchedError_Permanent(t *testing.T) {
 
 	task := longrun.NewOneShotTask("test", func(context.Context) error {
 		return errOther
-	}, []longrun.TransientRule{
-		{Err: errSentinel, MaxRetries: 5, Backoff: longrun.Exponential(1*time.Millisecond, 10*time.Millisecond)},
+	}, []resilience.Option{
+		retry.On(errSentinel, 5, backoff.Exponential(1*time.Millisecond, 10*time.Millisecond)),
 	})
 
 	err := task.Wait(context.Background())
@@ -220,8 +222,8 @@ func TestIntervalTask_TransientRetryThenRecover(t *testing.T) {
 		}
 
 		return nil
-	}, []longrun.TransientRule{
-		{Err: errSentinel, MaxRetries: 3, Backoff: longrun.Exponential(1*time.Millisecond, 5*time.Millisecond)},
+	}, []resilience.Option{
+		retry.On(errSentinel, 3, backoff.Exponential(1*time.Millisecond, 5*time.Millisecond)),
 	})
 
 	err := task.Wait(ctx)
@@ -268,8 +270,8 @@ func TestOneShotTask_WithDelay_NotReappliedOnRetry(t *testing.T) {
 		}
 
 		return nil
-	}, []longrun.TransientRule{
-		{Err: errSentinel, MaxRetries: 5, Backoff: longrun.Exponential(1*time.Millisecond, 5*time.Millisecond)},
+	}, []resilience.Option{
+		retry.On(errSentinel, 5, backoff.Exponential(1*time.Millisecond, 5*time.Millisecond)),
 	}, longrun.WithDelay(delay))
 
 	start := time.Now()
