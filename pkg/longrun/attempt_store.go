@@ -16,7 +16,8 @@ package longrun
 
 // AttemptStore tracks retry attempt counters.
 //
-// Default implementation is in-memory (memoryStore). Users can provide
+// Default implementation is in-memory (MemoryStore). Users can provide
+
 // a persistent implementation (Redis, SQLite) via WithAttemptStore to
 // survive process restarts without losing backoff state.
 //
