@@ -16,14 +16,8 @@ package longrun
 
 import (
 	"context"
-	"fmt"
 	"log/slog"
 	"time"
-
-	"go.opentelemetry.io/otel"
-	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/codes"
-	"go.opentelemetry.io/otel/metric"
 )
 
 // WorkFunc is the function that performs the actual work of a task.
@@ -145,7 +139,7 @@ func (t *Task) Wait(ctx context.Context) error {
 		slog.Int("rules", len(t.rules)),
 	)
 
-	err := t.runWithPolicy(ctx)
+	err := t.restartLoop(ctx)
 	if err != nil {
 		t.logger.ErrorContext(ctx, "permanent error", slog.Any("error", err))
 
@@ -155,49 +149,6 @@ func (t *Task) Wait(ctx context.Context) error {
 	t.logger.InfoContext(ctx, "stopped")
 
 	return nil
-}
-
-// runWithPolicy implements the restart loop with backoff.
-//
-//	Task.Wait(ctx)
-//	  └→ runWithPolicy (restart loop + backoff)
-//	       └→ runLoop (ticker or one-shot)
-//	            └→ runOnce (single invocation ± timeout)
-func (t *Task) runWithPolicy(ctx context.Context) error {
-	// Delay before first execution (if configured). Runs once, not on every retry.
-	if t.delay > 0 {
-		t.logger.DebugContext(ctx, "delaying first execution", slog.Any("delay", t.delay))
-
-		timer := time.NewTimer(t.delay)
-		defer timer.Stop()
-
-		select {
-		case <-ctx.Done():
-			return nil
-		case <-timer.C:
-		}
-	}
-
-	for {
-		err, hadProgress := t.runLoop(ctx)
-
-		// --- success path ---
-		if err == nil {
-			t.resetAllRules()
-
-			return nil
-		}
-
-		// Context done — not a task error.
-		if ctx.Err() != nil {
-			return nil
-		}
-
-		// --- failure path ---
-		if retryErr := t.handleFailure(ctx, err, hadProgress); retryErr != nil {
-			return retryErr
-		}
-	}
 }
 
 // handleFailure processes an error through a linear classification pipeline.
@@ -234,59 +185,6 @@ func (t *Task) handleFailure(ctx context.Context, err error, hadProgress bool) e
 	return t.handleBaselineFailure(ctx, err)
 }
 
-// handleBaselineFailure classifies err via baseline and retries accordingly.
-func (t *Task) handleBaselineFailure(ctx context.Context, err error) error {
-	class, policy := t.classifyWithBaseline(err)
-
-	if policy == nil {
-		// Unknown + no Default → permanent error.
-		return err
-	}
-
-	_, knownCategory := t.baseline.Policies[class.Category]
-
-	isDegraded := !knownCategory
-	if isDegraded {
-		t.logger.ErrorContext(ctx, "DEGRADED: unknown error, retrying with degraded policy",
-			slog.Any("error", err),
-		)
-	}
-
-	return t.retryWithPolicy(ctx, err, policy, class.Category, class.WaitDuration, isDegraded)
-}
-
-// classifyWithBaseline runs the classification pipeline and returns the
-// ErrorClass and the matching Policy. Returns nil policy when the error
-// is unknown and Baseline.Default is nil.
-func (t *Task) classifyWithBaseline(err error) (*ErrorClass, *Policy) {
-	// [1] Built-in transport classify.
-	if class := ClassifyTransport(err); class != nil {
-		return class, t.policyFor(class.Category)
-	}
-
-	// [2] User classifier.
-	if t.baseline.Classify != nil {
-		if class := t.baseline.Classify(err); class != nil {
-			return class, t.policyFor(class.Category)
-		}
-	}
-
-	// [3] Unknown — no classifier matched.
-	unknown := &ErrorClass{Category: CategoryUnknown}
-
-	return unknown, t.baseline.Default // Default may be nil → permanent
-}
-
-// policyFor returns the policy for the given category.
-// Falls back to Baseline.Default when the category has no explicit policy.
-func (t *Task) policyFor(cat ErrorCategory) *Policy {
-	if p, ok := t.baseline.Policies[cat]; ok {
-		return &p
-	}
-
-	return t.baseline.Default
-}
-
 // retryWithRule retries using a per-task TransientRule (legacy path).
 func (t *Task) retryWithRule(ctx context.Context, err error, rs *ruleState) error {
 	attempt, canRetry := rs.tracker.OnFailure()
@@ -314,90 +212,6 @@ func (t *Task) retryWithRule(ctx context.Context, err error, rs *ruleState) erro
 	return nil
 }
 
-// retryWithPolicy retries using a baseline Policy.
-// category is used to track per-category attempt count for exponential backoff.
-// When waitOverride > 0, sleeps exactly that duration instead of backoff.
-func (t *Task) retryWithPolicy(ctx context.Context, err error, p *Policy, category ErrorCategory, waitOverride time.Duration, isDegraded bool) error {
-	//nolint:godox // retry budget tracking deferred — baseline policies retry indefinitely for now (zero-value = unlimited).
-	// TODO: track per-policy retry budget (Policy.Retries). See #121.
-	attempt := t.baselineAttempts[category]
-	t.baselineAttempts[category]++
-
-	categoryLabel := categoryName(category)
-
-	taskAttr := attribute.String("task", t.name)
-	categoryAttr := attribute.String("category", categoryLabel)
-
-	metricBaselineRetryTotal.Add(ctx, 1, metric.WithAttributes(taskAttr, categoryAttr))
-
-	if isDegraded {
-		metricDegradedTotal.Add(ctx, 1, metric.WithAttributes(taskAttr))
-	}
-
-	level := slog.LevelInfo
-	if isDegraded {
-		level = slog.LevelError
-	}
-
-	var waitDur time.Duration
-
-	if waitOverride > 0 {
-		waitDur = waitOverride
-
-		t.logger.Log(ctx, level, "retrying after explicit wait",
-			slog.Any("error", err),
-			slog.Any("wait", waitDur),
-			slog.Int("attempt", attempt+1),
-		)
-	} else {
-		waitDur = p.Backoff.Duration(attempt)
-
-		t.logger.Log(ctx, level, "retrying with backoff",
-			slog.Any("error", err),
-			slog.Any("backoff", waitDur),
-			slog.Int("attempt", attempt+1),
-		)
-	}
-
-	start := time.Now()
-	result := t.waitDuration(ctx, waitDur)
-
-	if isDegraded {
-		metricDegradedDuration.Record(ctx, time.Since(start).Seconds(), metric.WithAttributes(taskAttr))
-	}
-
-	return result
-}
-
-// categoryName returns a human-readable label for metrics and logs.
-func categoryName(c ErrorCategory) string {
-	switch c {
-	case CategoryUnknown:
-		return "degraded"
-	case CategoryNode:
-		return "node"
-	case CategoryService:
-		return "service"
-	default:
-		return fmt.Sprintf("category_%d", c)
-	}
-}
-
-// waitDuration sleeps for d or until ctx is cancelled.
-// Returns nil on successful wait (caller should retry),
-// nil on context cancellation (next iteration handles it).
-func (t *Task) waitDuration(ctx context.Context, d time.Duration) error {
-	timer := time.NewTimer(d)
-	defer timer.Stop()
-
-	select {
-	case <-ctx.Done():
-		return nil
-	case <-timer.C:
-		return nil
-	}
-}
-
 func (t *Task) findMatchingRule(err error) *ruleState {
 	for i := range t.rules {
 		if t.rules[i].matcher.Match(err) {
@@ -414,72 +228,4 @@ func (t *Task) resetAllRules() {
 	}
 
 	t.baselineAttempts = make(map[ErrorCategory]int)
-}
-
-// runLoop runs the ticker loop (interval > 0) or a single invocation (one-shot).
-// The second return value (hadProgress) is true when at least one invocation
-// of the work function succeeded before the loop returned an error.
-//
-// Interval mode always runs work immediately, then on every tick. When a transient
-// error triggers a retry via handleFailure, runWithPolicy re-enters runLoop from
-// scratch: work runs immediately again, then a new ticker starts. This means the
-// ticker resets on each retry — the interval between the immediate retry and the
-// next tick is a full interval period, not the remainder of the previous one.
-func (t *Task) runLoop(ctx context.Context) (error, bool) {
-	if t.interval <= 0 {
-		return t.runOnce(ctx), false
-	}
-
-	// Interval mode: run immediately, then on every tick.
-	if err := t.runOnce(ctx); err != nil {
-		return err, false
-	}
-
-	hadProgress := true
-
-	ticker := time.NewTicker(t.interval)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-ctx.Done():
-			return nil, hadProgress
-		case <-ticker.C:
-			if err := t.runOnce(ctx); err != nil {
-				return err, hadProgress
-			}
-
-			hadProgress = true
-		}
-	}
-}
-
-// runOnce executes the work function once, optionally with a per-invocation timeout.
-func (t *Task) runOnce(ctx context.Context) error {
-	ctx, span := otel.Tracer("github.com/thumbrise/autosolve/pkg/longrun").Start(ctx, t.name)
-	defer span.End()
-
-	if t.timeout > 0 {
-		var cancel context.CancelFunc
-
-		ctx, cancel = context.WithTimeout(ctx, t.timeout)
-		defer cancel()
-
-		t.logger.DebugContext(ctx, "timeout applied", slog.Any("timeout", t.timeout))
-	}
-
-	t.logger.DebugContext(ctx, "iteration start", slog.Any("interval", t.interval))
-
-	startTime := time.Now()
-
-	err := t.work(ctx)
-	if err != nil {
-		span.RecordError(err)
-		span.SetStatus(codes.Error, err.Error())
-	}
-
-	duration := time.Since(startTime)
-	t.logger.DebugContext(ctx, "iteration finished", slog.Any("duration", duration))
-
-	return err
 }
