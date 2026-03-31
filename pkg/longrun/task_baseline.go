@@ -85,54 +85,48 @@ func (h *baselineFailureHandler) policyFor(cat ErrorCategory) *Policy {
 	return h.baseline.Default
 }
 
+// resolveBaselineMaxRetries converts Policy.Retries to a value understood by doRetry.
+//
+//	0 → UnlimitedRetries (baseline default: retry forever).
+//	>0 → exact budget.
+func resolveBaselineMaxRetries(retries int) int {
+	if retries <= 0 {
+		return UnlimitedRetries
+	}
+
+	return retries
+}
+
 // retry retries using a baseline Policy.
 func (h *baselineFailureHandler) retry(ctx context.Context, err error, p *Policy, category ErrorCategory, waitOverride time.Duration, isDegraded bool) error {
-	//nolint:godox // retry budget tracking deferred — baseline policies retry indefinitely for now (zero-value = unlimited).
-	// TODO: track per-policy retry budget (Policy.Retries). See #121.
-	key := "baseline:" + categoryName(category)
-	attempt := h.attempts.Increment(key)
-
-	categoryLabel := categoryName(category)
-
-	taskAttr := attribute.String("task", h.taskName)
-	categoryAttr := attribute.String("category", categoryLabel)
-
-	metricBaselineRetryTotal.Add(ctx, 1, metric.WithAttributes(taskAttr, categoryAttr))
-
-	if isDegraded {
-		metricDegradedTotal.Add(ctx, 1, metric.WithAttributes(taskAttr))
-	}
+	catLabel := categoryName(category)
 
 	level := slog.LevelInfo
 	if isDegraded {
 		level = slog.LevelError
 	}
 
-	var waitDur time.Duration
-
-	if waitOverride > 0 {
-		waitDur = waitOverride
-
-		h.logger.Log(ctx, level, "retrying after explicit wait",
-			slog.Any("error", err),
-			slog.Any("wait", waitDur),
-			slog.Int("attempt", attempt+1),
-		)
-	} else {
-		waitDur = p.Backoff(attempt)
-
-		h.logger.Log(ctx, level, "retrying with backoff",
-			slog.Any("error", err),
-			slog.Any("backoff", waitDur),
-			slog.Int("attempt", attempt+1),
-		)
-	}
-
 	start := time.Now()
 
-	sleepCtx(ctx, waitDur)
+	retryErr := doRetry(ctx, err, retryParams{
+		key:          "baseline:" + catLabel,
+		maxRetries:   resolveBaselineMaxRetries(p.Retries),
+		backoff:      p.Backoff,
+		waitOverride: waitOverride,
+		logLevel:     level,
+		logMsg:       "retrying with baseline policy",
+	}, h.attempts, h.logger)
+	if retryErr != nil {
+		return retryErr // budget exhausted — no metrics for failed retry
+	}
+
+	taskAttr := attribute.String("task", h.taskName)
+	categoryAttr := attribute.String("category", catLabel)
+
+	metricBaselineRetryTotal.Add(ctx, 1, metric.WithAttributes(taskAttr, categoryAttr))
 
 	if isDegraded {
+		metricDegradedTotal.Add(ctx, 1, metric.WithAttributes(taskAttr))
 		metricDegradedDuration.Record(ctx, time.Since(start).Seconds(), metric.WithAttributes(taskAttr))
 	}
 

@@ -110,29 +110,13 @@ func (h *ruleFailureHandler) Handle(ctx context.Context, err error) error {
 		return errSkip
 	}
 
-	maxRetries := resolveMaxRetries(h.rule.MaxRetries)
-	attempt := h.attempts.Increment(h.key)
-
-	if maxRetries != UnlimitedRetries && attempt >= maxRetries {
-		h.logger.ErrorContext(ctx, "max retries reached",
-			slog.Any("error", err),
-			slog.Int("max_retries", maxRetries),
-		)
-
-		return err
-	}
-
-	backoffDuration := h.rule.Backoff(attempt)
-
-	h.logger.InfoContext(ctx, "transient error, retrying",
-		slog.Int("attempt", attempt+1),
-		slog.Any("error", err),
-		slog.Any("backoff", backoffDuration),
-	)
-
-	sleepCtx(ctx, backoffDuration)
-
-	return nil
+	return doRetry(ctx, err, retryParams{
+		key:        h.key,
+		maxRetries: resolveMaxRetries(h.rule.MaxRetries),
+		backoff:    h.rule.Backoff,
+		logLevel:   slog.LevelInfo,
+		logMsg:     "transient error, retrying",
+	}, h.attempts, h.logger)
 }
 
 // buildRuleHandlers validates rules and compiles them into failureHandlers.
