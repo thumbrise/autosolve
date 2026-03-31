@@ -68,8 +68,8 @@ func NewRunner(opts RunnerOptions) *Runner {
 
 // Add registers a task for concurrent execution.
 // Panics if the same task is added twice.
-// If Runner has a Baseline configured, it is appended as a resilience Option
-// after the task's own retry Options.
+// If Runner has a Baseline configured, it is prepended as a resilience Option
+// before the task's own retry Options (outermost middleware — fallback layer).
 func (r *Runner) Add(task *Task) {
 	for _, t := range r.tasks {
 		if t == task {
