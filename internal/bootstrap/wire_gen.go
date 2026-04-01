@@ -11,9 +11,11 @@ import (
 	"github.com/thumbrise/autosolve/cmd"
 	"github.com/thumbrise/autosolve/cmd/cmds"
 	"github.com/thumbrise/autosolve/internal/application/schedule"
+	"github.com/thumbrise/autosolve/internal/application/schedule/globals"
+	"github.com/thumbrise/autosolve/internal/application/schedule/repos"
 	config2 "github.com/thumbrise/autosolve/internal/config"
-	"github.com/thumbrise/autosolve/internal/domain/spec/global"
-	"github.com/thumbrise/autosolve/internal/domain/spec/repository"
+	"github.com/thumbrise/autosolve/internal/domain/tasks/global"
+	"github.com/thumbrise/autosolve/internal/domain/tasks/repository"
 	"github.com/thumbrise/autosolve/internal/infrastructure/config"
 	"github.com/thumbrise/autosolve/internal/infrastructure/dal/repositories"
 	"github.com/thumbrise/autosolve/internal/infrastructure/dal/sqlcgen"
@@ -42,7 +44,6 @@ func InitializeKernel(contextContext context.Context, reader *config.Reader, log
 	}
 	queries := sqlcgen.New()
 	repositoryRepository := repositories.NewRepositoryRepository(db, queries, logger)
-	repositoryTasks := schedule.NewRepositoryTasks(configGithub, repositoryRepository)
 	minIntervalThrottler := limit.NewMinIntervalThrottler(configGithub)
 	transport := github.NewTransport(minIntervalThrottler)
 	domainMapper := github.NewDomainMapper()
@@ -52,15 +53,18 @@ func InitializeKernel(contextContext context.Context, reader *config.Reader, log
 	issuePoller := repository.NewIssuePoller(configGithub, client, logger, issueSyncer)
 	queueQueue := queue.NewQueue(db)
 	outboxRelay := repository.NewOutboxRelay(db, queries, queueQueue, logger)
+	provider := repos.NewProvider(configGithub, repositoryRepository, validator, issuePoller, outboxRelay)
 	configOllama, err := config2.NewOllama(contextContext, reader)
 	if err != nil {
 		return nil, err
 	}
 	ollamaClient := ollama.NewClient(configOllama)
 	issueExplainer := global.NewIssueExplainer(configGithub, db, queries, queueQueue, ollamaClient, client, logger)
-	v := schedule.NewTasks(repositoryTasks, validator, issuePoller, outboxRelay, issueExplainer)
-	planner := schedule.NewPlanner(v)
-	scheduler := schedule.NewScheduler(planner, logger)
+	globalsProvider := globals.NewProvider(issueExplainer)
+	v := schedule.NewJobs(provider, globalsProvider)
+	plan := schedule.NewPlan(v)
+	resilienceClient := schedule.NewResilienceClient()
+	scheduler := schedule.NewScheduler(plan, resilienceClient, logger)
 	cmdsSchedule := cmds.NewSchedule(scheduler)
 	migrate := cmds.NewMigrate()
 	migrator, err := database.NewMigrator(db, configDatabase)
