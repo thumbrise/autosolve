@@ -236,3 +236,105 @@ func TestOn_WrappedError(t *testing.T) {
 		t.Fatalf("expected 2 calls, got %d", n)
 	}
 }
+
+func TestOnFunc_CustomClassifier(t *testing.T) {
+	errCode := errors.New("status 503")
+
+	classify := func(err error) bool {
+		return err.Error() == "status 503"
+	}
+
+	var calls int32
+
+	err := resilience.Do(context.Background(), func(context.Context) error {
+		n := atomic.AddInt32(&calls, 1)
+		if n < 3 {
+			return errCode
+		}
+
+		return nil
+	}, retry.OnFunc(classify, 5, backoff.Constant(1*time.Millisecond), "http503"))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if n := atomic.LoadInt32(&calls); n != 3 {
+		t.Fatalf("expected 3 calls, got %d", n)
+	}
+}
+
+func TestOn_WithWaitHint_OverridesBackoff(t *testing.T) {
+	hint := 1 * time.Millisecond
+
+	var calls int32
+
+	err := resilience.Do(context.Background(), func(context.Context) error {
+		n := atomic.AddInt32(&calls, 1)
+		if n < 2 {
+			return errTransient
+		}
+
+		return nil
+	}, retry.On(errTransient, 3, backoff.Constant(10*time.Second),
+		retry.WithWaitHint(func(error) time.Duration {
+			return hint
+		}),
+	))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// If backoff (10s) was used instead of hint (1ms), test would timeout.
+	if n := atomic.LoadInt32(&calls); n != 2 {
+		t.Fatalf("expected 2 calls, got %d", n)
+	}
+}
+
+func TestOn_WithWaitHint_ZeroFallsBackToBackoff(t *testing.T) {
+	var calls int32
+
+	err := resilience.Do(context.Background(), func(context.Context) error {
+		n := atomic.AddInt32(&calls, 1)
+		if n < 2 {
+			return errTransient
+		}
+
+		return nil
+	}, retry.On(errTransient, 3, backoff.Constant(1*time.Millisecond),
+		retry.WithWaitHint(func(error) time.Duration {
+			return 0 // no hint — backoff should be used
+		}),
+	))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if n := atomic.LoadInt32(&calls); n != 2 {
+		t.Fatalf("expected 2 calls, got %d", n)
+	}
+}
+
+func TestOn_BackoffReceivesCorrectAttemptIndex(t *testing.T) {
+	var attempts []int
+
+	bo := func(attempt int) time.Duration {
+		attempts = append(attempts, attempt)
+
+		return 1 * time.Millisecond
+	}
+
+	resilience.Do(context.Background(), func(context.Context) error {
+		return errTransient
+	}, retry.On(errTransient, 3, bo))
+
+	expected := []int{0, 1, 2}
+	if len(attempts) != len(expected) {
+		t.Fatalf("expected %v, got %v", expected, attempts)
+	}
+
+	for i := range expected {
+		if attempts[i] != expected[i] {
+			t.Fatalf("at index %d: expected attempt %d, got %d", i, expected[i], attempts[i])
+		}
+	}
+}
