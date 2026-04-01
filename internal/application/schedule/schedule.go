@@ -16,113 +16,99 @@ package schedule
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"log/slog"
 	"time"
 
-	"github.com/thumbrise/autosolve/internal/contracts/apierr"
-	"github.com/thumbrise/autosolve/internal/domain/spec"
-	"github.com/thumbrise/autosolve/pkg/longrun"
+	"golang.org/x/sync/errgroup"
+
+	"github.com/thumbrise/autosolve/internal/application/schedule/sdsl"
+	"github.com/thumbrise/autosolve/pkg/resilience"
 )
 
-// Scheduler orchestrates execution in two phases:
-//  1. Preflights — one-shot tasks, all must pass before workers start.
-//  2. Workers — long-running interval tasks.
-//
-// Scheduler trusts Planner — it receives a flat list of Units and knows
-// nothing about repositories, partitions, or scopes.
+// Scheduler is the lifecycle engine. It knows its phases, their order,
+// and their retry strategies. Scheduler owns this knowledge — it's not
+// configurable, it's the core.
 type Scheduler struct {
-	planner *Planner
-	logger  *slog.Logger
+	plan   *Plan
+	client *resilience.Client
+	logger *slog.Logger
 }
 
 // NewScheduler creates a Scheduler.
-func NewScheduler(planner *Planner, logger *slog.Logger) *Scheduler {
-	return &Scheduler{planner: planner, logger: logger}
+func NewScheduler(plan *Plan, client *resilience.Client, logger *slog.Logger) *Scheduler {
+	return &Scheduler{plan: plan, client: client, logger: logger}
 }
 
-// Run executes tasks in lifecycle order: preflights first, then workers.
+// Run executes the lifecycle: setup first, then work.
 func (s *Scheduler) Run(ctx context.Context) error {
-	preflights := s.planner.Preflights()
-	workers := s.planner.Workers()
+	// Setup phase — strict: unregistered errors crash.
+	s.logger.InfoContext(ctx, "scheduler: starting setup",
+		slog.Int("jobs", len(s.plan.Setup)),
+	)
 
-	s.logger.InfoContext(ctx, "scheduler: running preflights", slog.Int("count", len(preflights)))
-
-	if err := s.runPreflights(ctx, preflights); err != nil {
-		return fmt.Errorf("preflights failed: %w", err)
+	if err := s.runJobs(ctx, s.plan.Setup, strictRetryOptions()); err != nil {
+		return fmt.Errorf("setup: %w", err)
 	}
 
-	s.logger.InfoContext(ctx, "scheduler: preflights done, starting workers", slog.Int("count", len(workers)))
+	s.logger.InfoContext(ctx, "scheduler: setup done, starting work",
+		slog.Int("jobs", len(s.plan.Work)),
+	)
 
-	return s.runWorkers(ctx, workers)
+	// Work phase — resilient: catch-all for unregistered errors.
+	return s.runJobs(ctx, s.plan.Work, resilientRetryOptions())
 }
 
-func (s *Scheduler) runPreflights(ctx context.Context, tasks []spec.Task) error {
-	runner := longrun.NewRunner(longrun.RunnerOptions{
-		Logger: s.logger,
-		// Default: nil — unknown errors crash preflights. Fix your config.
-		Baseline: longrun.NewBaseline(
-			longrun.Policy{Backoff: longrun.Exponential(2*time.Second, 2*time.Minute)}, // Node — aggressive retry
-			longrun.Policy{Backoff: longrun.Exponential(5*time.Second, 5*time.Minute)}, // Service — gentle retry
-			infraClassifier(),
-		),
-	})
+// runJobs runs all jobs in parallel with the given retry options.
+func (s *Scheduler) runJobs(ctx context.Context, jobs []sdsl.Job, opts []resilience.Option) error {
+	grp, ctx := errgroup.WithContext(ctx)
 
-	for _, t := range tasks {
-		runner.Add(longrun.NewOneShotTask(t.Name, t.Work, nil))
-	}
-
-	return runner.Wait(ctx)
-}
-
-func (s *Scheduler) runWorkers(ctx context.Context, tasks []spec.Task) error {
-	runner := longrun.NewRunner(longrun.RunnerOptions{
-		Logger: s.logger,
-		// Unknown errors — don't crash, scream loudly, retry with big backoff.
-		Baseline: longrun.NewBaselineDegraded(
-			longrun.Policy{Backoff: longrun.Exponential(2*time.Second, 2*time.Minute)},  // Node — aggressive retry
-			longrun.Policy{Backoff: longrun.Exponential(5*time.Second, 5*time.Minute)},  // Service — gentle retry
-			longrun.Policy{Backoff: longrun.Exponential(30*time.Second, 5*time.Minute)}, // Default — degraded
-			infraClassifier(),
-		),
-	})
-
-	for _, t := range tasks {
-		runner.Add(longrun.NewIntervalTask(t.Name, t.Interval, t.Work, nil))
-	}
-
-	return runner.Wait(ctx)
-}
-
-// infraClassifier returns a ClassifierFunc that checks apierr interfaces
-// on errors returned by infrastructure clients.
-//
-// Classification:
-//   - apierr.WaitHinted with positive WaitDuration → Service + explicit wait
-//   - apierr.ServicePressure → Service
-//   - apierr.Retryable → Service
-//   - unknown → nil (let baseline handle as Unknown/Default)
-func infraClassifier() longrun.ClassifierFunc {
-	return func(err error) *longrun.ErrorClass {
-		var wh apierr.WaitHinted
-		if errors.As(err, &wh) && wh.WaitDuration() > 0 {
-			return &longrun.ErrorClass{
-				Category:     longrun.CategoryService,
-				WaitDuration: wh.WaitDuration(),
+	for _, j := range jobs {
+		grp.Go(func() error {
+			if j.Interval <= 0 {
+				return s.runOnce(ctx, j, opts)
 			}
+
+			return s.runLoop(ctx, j, opts)
+		})
+	}
+
+	return grp.Wait()
+}
+
+// runOnce executes a job once through the resilience client.
+func (s *Scheduler) runOnce(ctx context.Context, j sdsl.Job, opts []resilience.Option) error {
+	s.logger.InfoContext(ctx, "job starting", slog.String("job", j.Name))
+
+	err := s.client.Call(j.Work).With(opts...).Do(ctx)
+	if err != nil && ctx.Err() == nil {
+		return err
+	}
+
+	return nil
+}
+
+// runLoop executes a job on a ticker through the resilience client.
+// Runs immediately, then on every tick.
+func (s *Scheduler) runLoop(ctx context.Context, j sdsl.Job, opts []resilience.Option) error {
+	s.logger.InfoContext(ctx, "job starting",
+		slog.String("job", j.Name),
+		slog.Any("interval", j.Interval),
+	)
+
+	ticker := time.NewTicker(j.Interval)
+	defer ticker.Stop()
+
+	for {
+		err := s.client.Call(j.Work).With(opts...).Do(ctx)
+		if err != nil && ctx.Err() == nil {
+			return err
 		}
 
-		var sp apierr.ServicePressure
-		if errors.As(err, &sp) && sp.ServicePressure() {
-			return &longrun.ErrorClass{Category: longrun.CategoryService}
+		select {
+		case <-ctx.Done():
+			return nil
+		case <-ticker.C:
 		}
-
-		var rt apierr.Retryable
-		if errors.As(err, &rt) && rt.Retryable() {
-			return &longrun.ErrorClass{Category: longrun.CategoryService}
-		}
-
-		return nil
 	}
 }

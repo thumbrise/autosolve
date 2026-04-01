@@ -17,53 +17,53 @@ package schedule
 import (
 	"fmt"
 
-	"github.com/thumbrise/autosolve/internal/domain/spec"
+	"github.com/thumbrise/autosolve/internal/application/schedule/sdsl"
 )
 
-// Planner receives ready-to-schedule Tasks from the registry and splits them by Phase.
-// It validates inputs (paranoid) but does not multiply or transform — that's done by providers.
-type Planner struct {
-	tasks []spec.Task
+// Plan holds jobs grouped by phase. Setup runs first, then Work.
+// Scheduler knows the order — Plan is just data.
+type Plan struct {
+	Setup []sdsl.Job
+	Work  []sdsl.Job
 }
 
-// NewPlanner creates a Planner from Tasks provided by the registry.
-// Panics on duplicate Task.Name — name is an operationally important identifier.
-func NewPlanner(tasks []spec.Task) *Planner {
-	seen := make(map[string]struct{}, len(tasks))
+// NewPlan creates a Plan from jobs. Jobs are split by phase prefix in their name.
+// Panics on duplicate job names.
+func NewPlan(jobs []sdsl.Job) *Plan {
+	seen := make(map[string]struct{}, len(jobs))
 
-	for _, t := range tasks {
-		if _, exists := seen[t.Name]; exists {
-			panic(fmt.Sprintf("planner: duplicate task name %q — check registry for double registration", t.Name))
+	var plan Plan
+
+	for _, j := range jobs {
+		if _, exists := seen[j.Name]; exists {
+			panic(fmt.Sprintf("planner: duplicate job name %q — check registry for double registration", j.Name))
 		}
 
-		seen[t.Name] = struct{}{}
-	}
+		seen[j.Name] = struct{}{}
 
-	return &Planner{tasks: tasks}
-}
+		phase := extractPhase(j.Name)
 
-// Preflights returns tasks in PhasePreflight.
-func (p *Planner) Preflights() []spec.Task {
-	var out []spec.Task
-
-	for _, t := range p.tasks {
-		if t.Phase == spec.PhasePreflight {
-			out = append(out, t)
-		}
-	}
-
-	return out
-}
-
-// Workers returns tasks in PhaseWork.
-func (p *Planner) Workers() []spec.Task {
-	var out []spec.Task
-
-	for _, t := range p.tasks {
-		if t.Phase == spec.PhaseWork {
-			out = append(out, t)
+		switch phase {
+		case sdsl.PhaseSetup:
+			plan.Setup = append(plan.Setup, j)
+		case sdsl.PhaseWork:
+			plan.Work = append(plan.Work, j)
+		default:
+			panic(fmt.Sprintf("planner: unknown phase %q in job %q", phase, j.Name))
 		}
 	}
 
-	return out
+	return &plan
+}
+
+// extractPhase extracts the phase name from a job name.
+// Job names follow the convention "phase:resource:partition".
+func extractPhase(name string) string {
+	for i, c := range name {
+		if c == ':' {
+			return name[:i]
+		}
+	}
+
+	panic(fmt.Sprintf("planner: job name %q has no phase prefix (expected 'phase:...')", name))
 }

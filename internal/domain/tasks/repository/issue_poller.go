@@ -49,14 +49,6 @@ func NewIssuePoller(cfg *config.Github, githubClient *githubinfra.Client, logger
 	return &IssuePoller{cfg: cfg, githubClient: githubClient, logger: logger, syncRepo: syncRepo}
 }
 
-func (p *IssuePoller) TaskSpec() TaskSpec {
-	return TaskSpec{
-		Resource: "issue-poller",
-		Interval: p.cfg.Issues.ParseInterval,
-		Work:     p.Run,
-	}
-}
-
 func (p *IssuePoller) Run(ctx context.Context, partition Partition) error {
 	p.logger.DebugContext(ctx, "polling issues",
 		slog.String("owner", partition.Owner),
