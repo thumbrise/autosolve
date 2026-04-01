@@ -1,79 +1,40 @@
 ---
-title: longrun Package — Overview
-description: Standalone Go package for long-running tasks with per-error retry, exponential backoff, degraded mode, and built-in OpenTelemetry spans.
+title: longrun Package (Deprecated)
+description: "pkg/longrun has been replaced by pkg/resilience and the schedule package."
 ---
 
-# longrun Package
+# longrun Package (Deprecated)
 
-`pkg/longrun` is a self-contained Go package for long-running tasks. Zero internal dependencies beyond `golang.org/x/sync`. Designed for extraction into a standalone resilience toolkit once the API stabilizes (see [#55](https://github.com/thumbrise/autosolve/issues/55)).
+::: danger Deprecated
+`pkg/longrun` has been deleted. All functionality has been replaced by:
 
-::: tip Standalone Package
-`longrun` has no dependency on autosolve internals. It lives in `pkg/` and can be used in any Go project.
+- **[`pkg/resilience`](../resilience/)** — composable resilience for function calls (retry, backoff, plugins)
+- **[Schedule package](../schedule)** — scheduler owns the execution loop directly
+
+See [Devlog #13](../../devlog/013-killing-longrun) for the full story of this transformation.
 :::
 
-## Two Primitives
+## What was longrun?
 
-- **Task** — one-shot or interval, with optional per-error retry and backoff. Self-contained — works standalone via `task.Wait(ctx)` or managed by Runner.
-- **Runner** — orchestrates N tasks. Cancels all on permanent failure. LIFO shutdown hooks. Injects Baseline policies silently.
+longrun was a task orchestration package: `Task`, `Runner`, `Baseline`, `Policy`, `TransientRule`, `failureHandler`, `AttemptStore`. ~1500 lines wrapping `errgroup` + `time.Ticker` + retry logic.
 
-## Execution Model
+## Why was it killed?
 
-```
-Task.Wait(ctx)
-  └→ restartLoop (restart loop + backoff)
-       └→ runLoop (ticker or one-shot)
-            └→ runOnce (single invocation ± timeout)
-                 └→ automatic OTEL span
-```
+It was `make_u32_from_two_u16()` — an abstraction that made the world worse, not better. Every concept it introduced (Baseline, Policy, ErrorCategory, ClassifierFunc, degraded mode) collapsed into `retry.OnFunc` with different parameters. The scheduler needed 5 minutes of `errgroup` + `ticker`, not a framework.
 
-Task is the root of composition for a single unit of work. Runner coordinates multiple Tasks but delegates execution entirely.
+## Where did it go?
 
-## Quick Start
-
-```go
-// One-shot task (e.g. migration)
-task := longrun.NewOneShotTask("migrate", db.AutoMigrate, nil)
-
-// Interval task with per-error retry
-task := longrun.NewIntervalTask("poll", 10*time.Second, poller.Run, []longrun.TransientRule{
-    {Err: ErrFetchIssues, MaxRetries: 5, Backoff: longrun.Exponential(2*time.Second, 60*time.Second)},
-    {Err: ErrStoreIssues, MaxRetries: longrun.UnlimitedRetries, Backoff: longrun.Exponential(100*time.Millisecond, 2*time.Second)},
-})
-
-// Runner with Baseline — invisible safety net for all tasks
-runner := longrun.NewRunner(longrun.RunnerOptions{
-    Logger: logger,
-    Baseline: longrun.NewBaselineDegraded(
-        longrun.Policy{Retries: 10, Backoff: longrun.Exponential(2*time.Second, 2*time.Minute)},  // Node — 10 retries
-        longrun.Policy{Retries: 5, Backoff: longrun.Exponential(5*time.Second, 5*time.Minute)},   // Service — 5 retries
-        longrun.Policy{Backoff: longrun.Exponential(30*time.Second, 5*time.Minute)},               // Default (degraded) — unlimited
-        myClassifier,
-    ),
-})
-runner.Add(task)
-err := runner.Wait(ctx)
-```
-
-## Chapter Guide
-
-This is a multi-page chapter. Start here for the overview, then dive into specifics:
-
-| Page | What you'll learn |
+| longrun concept | Replaced by |
 |---|---|
-| **[Failure Pipeline](./pipeline)** | How errors flow through handlers: TransientRules, Baseline classification, degraded mode. The unified `failureHandler` interface. |
-| **[Backoff & Retry State](./backoff)** | `BackoffFunc` as a pure function. `AttemptStore` for persistent retry state. Why algorithms don't belong to systems. |
-| **[Observability](./observability)** | Automatic OTEL spans, baseline retry metrics, degraded mode alerting. |
-| **[Roadmap](./roadmap)** | Where longrun is headed — extraction as `thumbrise/resilience`, multi-module design, future patterns. |
+| `Task` + `Runner` | Scheduler's `runOnce` / `runLoop` + `errgroup` |
+| `TransientRule` | `retry.On` / `retry.OnFunc` ([resilience.Option](../resilience/retry)) |
+| `Baseline` + `Policy` | `strictRetryOptions` / `resilientRetryOptions` in schedule |
+| `ErrorCategory` + `ClassifierFunc` | `isNodeError` / `isServiceError` in schedule |
+| `BackoffFunc` | `backoff.Func` ([resilience/backoff](../resilience/backoff)) — unchanged |
+| `AttemptStore` | Attempt counter inside Option closure — per-call, no shared state |
+| OTEL metrics | `rsotel.Plugin()` ([resilience/otel](../resilience/otel)) |
+| Degraded mode | Catch-all `retry.OnFunc(always, ...)` with name `"unregistered"` |
 
-## Design Principles
+## Historical docs
 
-- **Unified failure pipeline** — TransientRules and Baseline are both `failureHandler` implementations. One loop, no branching.
-- **BackoffFunc is a pure function** — `(attempt) → duration`. Any `func(int) time.Duration` works. Open/Closed at maximum.
-- **AttemptStore** — retry counters behind an interface. Default: in-memory. Plug Redis/SQLite for persistence.
-- **Transient errors whitelist** — empty handlers = all errors permanent. You must explicitly opt in to retry.
-- **Signals are not the package's job** — Runner takes a `ctx`, caller handles `signal.NotifyContext`.
-- **LIFO shutdown** — last added task shuts down first, like `defer`.
-
-## Links
-
-- Extraction roadmap: [#55](https://github.com/thumbrise/autosolve/issues/55)
+The sub-pages (pipeline, backoff, observability, roadmap) have been removed from navigation. They remain in git history for reference.
