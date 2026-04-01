@@ -27,7 +27,7 @@ import (
 	"github.com/thumbrise/autosolve/internal/infrastructure/dal/sqlcgen"
 )
 
-const relayOtelLibrary = "github.com/thumbrise/autosolve/internal/domain/spec/repository/outbox_relay"
+const relayOtelLibrary = "github.com/thumbrise/autosolve/internal/domain/tasks/repository/outbox_relay"
 
 var relayMeter = otel.Meter(relayOtelLibrary)
 

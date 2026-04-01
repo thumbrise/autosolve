@@ -38,7 +38,7 @@ import (
 	"github.com/thumbrise/autosolve/internal/infrastructure/queue"
 )
 
-const explainerOtelLibrary = "github.com/thumbrise/autosolve/internal/domain/spec/global/issue_explainer"
+const explainerOtelLibrary = "github.com/thumbrise/autosolve/internal/domain/tasks/global/issue_explainer"
 
 var explainerMeter = otel.Meter(explainerOtelLibrary)
 

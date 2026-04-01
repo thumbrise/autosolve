@@ -72,7 +72,6 @@ func (p *Client) mapError(err error) error {
 	}
 
 	// Everything else returned as-is.
-	// Transport errors → longrun built-in classifier.
-	// Unknown errors → baseline degraded mode.
+	// Transport and unknown errors are classified by the caller.
 	return err
 }
