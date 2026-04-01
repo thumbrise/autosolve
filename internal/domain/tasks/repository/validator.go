@@ -20,8 +20,7 @@ import (
 	"fmt"
 	"log/slog"
 
-	"github.com/thumbrise/autosolve/internal/domain"
-	"github.com/thumbrise/autosolve/internal/domain/spec"
+	"github.com/thumbrise/autosolve/internal/domain/contracts"
 	githubinfra "github.com/thumbrise/autosolve/internal/infrastructure/github"
 )
 
@@ -31,24 +30,15 @@ var ErrValidateRepository = errors.New("validate repository")
 // then upserts it into the local database.
 type Validator struct {
 	githubClient *githubinfra.Client
-	repoStore    domain.RepositoryStore
+	repoStore    contracts.RepositoryStore
 	logger       *slog.Logger
 }
 
-func NewValidator(githubClient *githubinfra.Client, repoStore domain.RepositoryStore, logger *slog.Logger) *Validator {
+func NewValidator(githubClient *githubinfra.Client, repoStore contracts.RepositoryStore, logger *slog.Logger) *Validator {
 	return &Validator{githubClient: githubClient, repoStore: repoStore, logger: logger}
 }
 
-// TaskSpec returns a TaskSpec. Phase is set by the registry via Preflight().
-func (v *Validator) TaskSpec() TaskSpec {
-	return TaskSpec{
-		Resource: "repository-validator",
-		Interval: spec.OneShot,
-		Work:     v.validate,
-	}
-}
-
-func (v *Validator) validate(ctx context.Context, partition Partition) error {
+func (v *Validator) Run(ctx context.Context, partition Partition) error {
 	v.logger.InfoContext(ctx, "validating repository",
 		slog.String("owner", partition.Owner),
 		slog.String("name", partition.Name),

@@ -17,44 +17,35 @@ package schedule
 import (
 	"github.com/google/wire"
 
-	"github.com/thumbrise/autosolve/internal/domain/spec"
-	"github.com/thumbrise/autosolve/internal/domain/spec/global"
-	"github.com/thumbrise/autosolve/internal/domain/spec/repository"
+	"github.com/thumbrise/autosolve/internal/application/schedule/globals"
+	"github.com/thumbrise/autosolve/internal/application/schedule/repos"
+	"github.com/thumbrise/autosolve/internal/application/schedule/sdsl"
 )
 
 var Bindings = wire.NewSet(
 	NewScheduler,
-	NewPlanner,
-	NewRepositoryTasks,
-	NewTasks,
+	NewPlan,
+	NewResilienceClient,
+	NewJobs,
 
-	repository.NewValidator,
-	repository.NewIssuePoller,
-	repository.NewOutboxRelay,
-	global.NewIssueExplainer,
+	repos.Bindings,
+	globals.Bindings,
 )
 
-// NewTasks is the declarative task registry.
-// Read it as a manifest: what runs, under which partition.
+// NewJobs is the declarative job registry.
+// Read it as a manifest: which providers contribute jobs.
 //
-// Adding a per-repo task:  one line in repos.Pack(...)
-// Adding a global task:    one line in global(...)
-// Adding a partition:         new XxxTasks type + new section here
-func NewTasks(
-	repos *RepositoryTasks,
-	repoValidator *repository.Validator,
-	issuePoller *repository.IssuePoller,
-	outboxRelay *repository.OutboxRelay,
-	issueExplainer *global.IssueExplainer,
-) []spec.Task {
-	return join(
-		repos.Pack(
-			Preflight(repoValidator.TaskSpec()),
-			issuePoller.TaskSpec(),
-			outboxRelay.TaskSpec(),
-		),
-		globalTasks(
-			issueExplainer.TaskSpec(),
-		),
+// Each provider owns its domain tasks, intervals, and DSL.
+// Adding a new provider: one parameter + one line.
+//
+// Pattern mirrors cmd.NewCommands — providers register themselves,
+// registry assembles.
+func NewJobs(
+	repoProvider *repos.Provider,
+	globalProvider *globals.Provider,
+) []sdsl.Job {
+	return sdsl.Join(
+		repoProvider.Jobs(),
+		globalProvider.Jobs(),
 	)
 }

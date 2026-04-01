@@ -87,14 +87,6 @@ func NewOutboxRelay(db *sql.DB, queries *sqlcgen.Queries, queue JobQueue, logger
 	return &OutboxRelay{db: db, queries: queries, queue: queue, logger: logger}
 }
 
-func (r *OutboxRelay) TaskSpec() TaskSpec {
-	return TaskSpec{
-		Resource: "outbox-relay",
-		Interval: 5 * time.Second,
-		Work:     r.Run,
-	}
-}
-
 func (r *OutboxRelay) Run(ctx context.Context, partition Partition) error {
 	start := time.Now()
 

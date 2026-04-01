@@ -31,8 +31,7 @@ import (
 	"maragu.dev/goqite"
 
 	"github.com/thumbrise/autosolve/internal/config"
-	"github.com/thumbrise/autosolve/internal/domain/spec"
-	"github.com/thumbrise/autosolve/internal/domain/spec/repository"
+	"github.com/thumbrise/autosolve/internal/domain/tasks/repository"
 	"github.com/thumbrise/autosolve/internal/infrastructure/dal/sqlcgen"
 	githubinfra "github.com/thumbrise/autosolve/internal/infrastructure/github"
 	"github.com/thumbrise/autosolve/internal/infrastructure/ollama"
@@ -71,9 +70,6 @@ var (
 var ErrExplainIssue = errors.New("explain issue")
 
 const (
-	// issueExplainerInterval is how often the explainer polls the queue.
-	issueExplainerInterval = 2 * time.Second
-
 	// issueExplainPrompt is the default prompt sent to Ollama for issue classification.
 	issueExplainPrompt = "Classify this GitHub issue. Suggest priority (critical/high/medium/low) and component."
 
@@ -101,14 +97,6 @@ type IssueExplainer struct {
 
 func NewIssueExplainer(cfg *config.Github, db *sql.DB, queries *sqlcgen.Queries, queue *queue.Queue, ollamaClient *ollama.Client, githubClient *githubinfra.Client, logger *slog.Logger) *IssueExplainer {
 	return &IssueExplainer{cfg: cfg, db: db, queries: queries, queue: queue, ollama: ollamaClient, github: githubClient, logger: logger}
-}
-
-func (e *IssueExplainer) TaskSpec() spec.GlobalTaskSpec {
-	return spec.GlobalTaskSpec{
-		Resource: "issue-explainer",
-		Interval: issueExplainerInterval,
-		Work:     e.Run,
-	}
 }
 
 // Run polls the queue once, processes one message if available.
