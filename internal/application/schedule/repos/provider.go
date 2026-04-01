@@ -85,7 +85,7 @@ type workerRoute struct {
 // The provider is the router — it knows names, intervals, and phases.
 func (p *Provider) Jobs() []sdsl.Job {
 	workers := []workerRoute{
-		{"issue-poller", 10 * time.Second, p.poller},
+		{"issue-poller", p.cfg.Issues.ParseInterval, p.poller},
 		{"outbox-relay", 5 * time.Second, p.relay},
 	}
 
