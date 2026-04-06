@@ -51,7 +51,6 @@ export default defineConfig({
             {text: 'Two-Phase Scheduler', link: '/internals/two-phase'},
             {text: 'Error Handling & Retry', link: '/internals/error-handling'},
             {text: 'resilience (standalone)', link: 'https://thumbrise.github.io/resilience/'},
-            {text: 'longrun (deprecated)', link: 'https://thumbrise.github.io/resilience/'},
           ],
         },
       ],
