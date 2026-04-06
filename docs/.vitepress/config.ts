@@ -2,7 +2,7 @@ import {defineConfig} from 'vitepress'
 
 export default defineConfig({
   title: 'autosolve',
-  description: 'Self-hosted Go daemon that polls GitHub repos and dispatches AI agents to solve issues. No webhooks, no CI glue.',
+  description: 'Open source self-hosted Go (golang) daemon that polls GitHub repos and dispatches AI agents to solve issues automatically. No webhooks, no CI glue. GitHub issue automation tool.',
   base: '/autosolve/',
   sitemap: {
     hostname: 'https://thumbrise.github.io/autosolve/',
@@ -12,13 +12,14 @@ export default defineConfig({
     ['link', { rel: 'icon', type: 'image/png', sizes: '96x96', href: '/autosolve/favicon-96x96.png' }],
     ['link', { rel: 'apple-touch-icon', sizes: '180x180', href: '/autosolve/apple-touch-icon.png' }],
     ['meta', { property: 'og:image', content: 'https://thumbrise.github.io/autosolve/og-image.png' }],
-    ['meta', {property: 'og:type', content: 'website'}],
-    ['meta', {property: 'og:title', content: 'autosolve — AI agents for GitHub issues'}],
-    ['meta', {property: 'og:description', content: 'Self-hosted Go daemon. Polls repos, dispatches AI agents, posts results.'}],
-    ['meta', {property: 'og:url', content: 'https://thumbrise.github.io/autosolve/'}],
-    ['meta', {name: 'twitter:card', content: 'summary'}],
-    ['meta', {name: 'twitter:title', content: 'autosolve — AI agents for GitHub issues'}],
-    ['meta', {name: 'twitter:description', content: 'Self-hosted Go daemon. Polls repos, dispatches AI agents, posts results.'}],
+    ['meta', { property: 'og:type', content: 'website' }],
+    ['meta', { property: 'og:title', content: 'autosolve — AI agents for GitHub issues' }],
+    ['meta', { property: 'og:description', content: 'Open source self-hosted Go daemon. Polls repos, dispatches AI agents to solve issues automatically.' }],
+    ['meta', { property: 'og:url', content: 'https://thumbrise.github.io/autosolve/' }],
+    ['meta', { name: 'twitter:card', content: 'summary' }],
+    ['meta', { name: 'twitter:title', content: 'autosolve — AI agents for GitHub issues' }],
+    ['meta', { name: 'twitter:description', content: 'Open source self-hosted Go daemon. Polls repos, dispatches AI agents to solve issues automatically.' }],
+    ['meta', { name: 'keywords', content: 'github issue automation, ai agent github, self-hosted github bot, golang github automation, open source issue solver, autosolve, github ai daemon, devops automation tool' }],
   ],
 
   themeConfig: {
