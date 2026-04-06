@@ -17,10 +17,10 @@ package schedule
 import (
 	"time"
 
-	"github.com/thumbrise/autosolve/pkg/resilience"
-	"github.com/thumbrise/autosolve/pkg/resilience/backoff"
-	rsotel "github.com/thumbrise/autosolve/pkg/resilience/otel"
-	"github.com/thumbrise/autosolve/pkg/resilience/retry"
+	"github.com/thumbrise/resilience"
+	"github.com/thumbrise/resilience/backoff"
+	rsotel "github.com/thumbrise/resilience/otel"
+	"github.com/thumbrise/resilience/retry"
 )
 
 // NewResilienceClient creates the application-wide resilience Client with OTEL plugin.

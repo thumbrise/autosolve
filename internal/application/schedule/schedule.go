@@ -20,10 +20,10 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/thumbrise/resilience"
 	"golang.org/x/sync/errgroup"
 
 	"github.com/thumbrise/autosolve/internal/application/schedule/sdsl"
-	"github.com/thumbrise/autosolve/pkg/resilience"
 )
 
 // Scheduler is the lifecycle engine. It knows its phases, their order,
