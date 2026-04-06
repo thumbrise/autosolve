@@ -5,7 +5,7 @@ export default defineConfig({
   description: 'Self-hosted Go daemon that polls GitHub repos and dispatches AI agents to solve issues. No webhooks, no CI glue.',
   base: '/autosolve/',
   sitemap: {
-    hostname: 'https://thumbrise.github.io/autosolve',
+    hostname: 'https://thumbrise.github.io',
   },
   head: [
     ['meta', {property: 'og:type', content: 'website'}],
