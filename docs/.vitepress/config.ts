@@ -8,6 +8,10 @@ export default defineConfig({
     hostname: 'https://thumbrise.github.io/autosolve/',
   },
   head: [
+    ['link', { rel: 'icon', type: 'image/svg+xml', href: '/autosolve/favicon.svg' }],
+    ['link', { rel: 'icon', type: 'image/png', sizes: '96x96', href: '/autosolve/favicon-96x96.png' }],
+    ['link', { rel: 'apple-touch-icon', sizes: '180x180', href: '/autosolve/apple-touch-icon.png' }],
+    ['meta', { property: 'og:image', content: 'https://thumbrise.github.io/autosolve/og-image.png' }],
     ['meta', {property: 'og:type', content: 'website'}],
     ['meta', {property: 'og:title', content: 'autosolve — AI agents for GitHub issues'}],
     ['meta', {property: 'og:description', content: 'Self-hosted Go daemon. Polls repos, dispatches AI agents, posts results.'}],
