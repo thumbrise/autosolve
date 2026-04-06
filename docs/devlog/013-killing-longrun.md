@@ -139,7 +139,7 @@ Now: `retry.WithWaitHint(serviceWaitHint)`. One function. The application layer 
 ## The Numbers
 
 - **Deleted**: 20 files, ~1500 lines (entire `pkg/longrun/`)
-- **Created**: `pkg/resilience/` — 6 files, ~400 lines
+- **Created**: [`github.com/thumbrise/resilience`](https://github.com/thumbrise/resilience) — 6 files, ~400 lines
 - **Simplified**: scheduler from 125 LOC with Strategy/Phase/map to 70 LOC with explicit phases
 - **Glossary**: 12 terms (Task, Runner, Baseline, Policy, ...) → 4 terms (Option, Plugin, Client, CallBuilder)
 - **Data races**: fixed by design, not by code
