@@ -4,7 +4,7 @@ layout: home
 hero:
   name: autosolve
   text: AI agents for your GitHub issues
-  tagline: Self-hosted Go daemon. Polls repos, dispatches agents, posts results. No webhooks, no CI glue — just run and forget.
+  tagline: "Open source Go daemon. Polls repos, dispatches AI agents, posts results. No webhooks, no CI glue — just run and forget."
   actions:
     - theme: brand
       text: Quick Start
@@ -20,9 +20,9 @@ hero:
       link: https://github.com/thumbrise/autosolve
 
 features:
-  - icon: 🚧
-    title: Active Development
-    details: "The project is being built right now. Architecture is stabilizing, ideas are welcome, contributions are encouraged. Jump in while the foundation is fresh."
+  - icon: 🚧  
+    title: Active Development  
+    details: "Open source golang tool, built in public. Architecture is stabilizing, ideas are welcome, contributions are encouraged."
   - icon: 🧠
     title: Clear Problem, Clear Intent
     details: "AI dev tools exist but integrating them with GitHub is painful. autosolve is a simple bridge: poll → detect → dispatch → report. Read the full idea."
