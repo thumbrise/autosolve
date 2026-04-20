@@ -30,7 +30,7 @@ require (
 	golang.org/x/time v0.15.0
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1
 	maragu.dev/goqite v0.4.0
-	modernc.org/sqlite v1.49.0
+	modernc.org/sqlite v1.49.1
 )
 
 require (
