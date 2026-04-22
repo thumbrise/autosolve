@@ -7,7 +7,7 @@ require (
 	github.com/go-playground/validator/v10 v10.30.2
 	github.com/google/go-github/v84 v84.0.0
 	github.com/google/wire v0.7.0
-	github.com/jedib0t/go-pretty/v6 v6.7.9
+	github.com/jedib0t/go-pretty/v6 v6.7.10
 	github.com/m-mizutani/masq v0.2.1
 	github.com/pressly/goose/v3 v3.27.0
 	github.com/samber/slog-multi v1.8.0
