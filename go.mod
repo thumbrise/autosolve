@@ -8,7 +8,7 @@ require (
 	github.com/google/go-github/v84 v84.0.0
 	github.com/google/wire v0.7.0
 	github.com/jedib0t/go-pretty/v6 v6.8.3
-	github.com/m-mizutani/masq v0.2.2
+	github.com/m-mizutani/masq v0.2.3
 	github.com/pressly/goose/v3 v3.27.3
 	github.com/samber/slog-multi v1.8.0
 	github.com/spf13/cobra v1.10.2
@@ -30,7 +30,7 @@ require (
 	golang.org/x/time v0.15.0
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1
 	maragu.dev/goqite v0.4.0
-	modernc.org/sqlite v1.56.0
+	modernc.org/sqlite v1.57.0
 )
 
 require (
