@@ -3,7 +3,7 @@ module github.com/thumbrise/autosolve
 go 1.26.0
 
 require (
-	github.com/XSAM/otelsql v0.43.0
+	github.com/XSAM/otelsql v0.44.0
 	github.com/go-playground/validator/v10 v10.30.4
 	github.com/google/go-github/v84 v84.0.0
 	github.com/google/wire v0.7.0
